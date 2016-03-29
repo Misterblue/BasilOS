@@ -34,7 +34,10 @@ namespace Basil.AssetTest
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static String LogHeader = "[Basil.AssetTest]";
-        
+
+        private IConfig m_sysConfig = null;
+
+        #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
         public string Name { get { return "Basil.AssetTest"; } }        
         
@@ -45,6 +48,10 @@ namespace Basil.AssetTest
         public void Initialise(IConfigSource source)
         {
             m_log.DebugFormat("{0}: INITIALIZED MODULE", LogHeader);
+            m_sysConfig = source.Configs["Basil.AssetTest"];
+            if (m_sysConfig != null)
+            {
+            }
         }
         
         // IRegionModuleBase.Close()
@@ -70,5 +77,6 @@ namespace Basil.AssetTest
         {
             m_log.DebugFormat("{0}: REGION {1} LOADED", LogHeader, scene.RegionInfo.RegionName);
         }                
+        #endregion // INonSharedRegionNodule
     }
 }
