@@ -35,6 +35,7 @@ namespace Basil.AssetTest
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static String LogHeader = "[Basil.AssetTest]";
 
+        private BasilParams m_params;
         private IConfig m_sysConfig = null;
 
         #region INonSharedRegionNodule
@@ -48,9 +49,15 @@ namespace Basil.AssetTest
         public void Initialise(IConfigSource source)
         {
             m_log.DebugFormat("{0}: INITIALIZED MODULE", LogHeader);
+            m_params = new BasilParams();
             m_sysConfig = source.Configs["Basil.AssetTest"];
             if (m_sysConfig != null)
             {
+                m_params.SetParameterConfigurationValues(m_sysConfig);
+            }
+            if (m_params.Enabled)
+            {
+                m_log.InfoFormat("{0}: Enabled", LogHeader);
             }
         }
         
