@@ -24,7 +24,7 @@ using System.Text;
 
 using Nini.Config;
 
-namespace Basil.AssetTest
+namespace Basil.Assets
 {
     class BasilParams
     {

@@ -1,4 +1,4 @@
-    <Project frameworkVersion="v4_0" name="Basil.AssetTest" path="addon-modules/BasilOS/AssetTest" type="Library">
+    <Project frameworkVersion="v4_0" name="Basil.Assets" path="addon-modules/BasilOS/Assets" type="Library">
       <Configuration name="Debug">
         <Options>
           <OutputPath>../../../bin/</OutputPath>
@@ -31,10 +31,8 @@
       <Reference name="Mono.Addins" path="../../../bin/"/>
 
       <Files>
-        <Match buildAction="EmbeddedResource" path="Resources" pattern="*.addin.xml" recurse="true"/>
         <Match pattern="*.cs" recurse="true">
           <Exclude name="Tests" pattern="Tests"/>
         </Match>
-        <Match buildAction="EmbeddedResource" path="Resources" pattern="*.addin.xml" recurse="true"/>
       </Files>
     </Project>

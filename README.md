@@ -1,3 +1,4 @@
+---
 # BasilOS
 
 [OpenSimulator] region module for generating content for a [Basil viewer].
