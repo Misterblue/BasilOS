@@ -24,7 +24,7 @@ using System.Text;
 
 using Nini.Config;
 
-namespace Basil.Assets
+namespace org.herbal3d.Basil
 {
     class BasilParams
     {

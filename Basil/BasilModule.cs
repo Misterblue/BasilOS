@@ -27,20 +27,20 @@ using OpenSim.Region.Framework.Scenes;
 [assembly: Addin("Basil_Assets", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.8.2")]
 
-namespace Basil.Assets
+namespace org.herbal3d.Basil
 {
-    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Basil_Assets")]
+    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Basil_Module")]
     public class BasilAssets : INonSharedRegionModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-        private static String LogHeader = "[Basil.Assets]";
+        private static String LogHeader = "[Basil]";
 
         private BasilParams m_params;
         private IConfig m_sysConfig = null;
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
-        public string Name { get { return "Basil.Assets"; } }        
+        public string Name { get { return "Basil"; } }        
         
         // IRegionModuleBase.ReplaceableInterface()
         public Type ReplaceableInterface { get { return null; } }
@@ -50,7 +50,7 @@ namespace Basil.Assets
         {
             m_log.DebugFormat("{0}: INITIALIZED MODULE", LogHeader);
             m_params = new BasilParams();
-            m_sysConfig = source.Configs["Basil.Assets"];
+            m_sysConfig = source.Configs["Basil"];
             if (m_sysConfig != null)
             {
                 m_params.SetParameterConfigurationValues(m_sysConfig);
