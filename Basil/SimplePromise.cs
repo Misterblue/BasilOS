@@ -16,8 +16,7 @@
 
 using System;
 
-namespace org.herbal3d.Basil
-{
+namespace org.herbal3d.Basil {
     /* A simple implementation of the Promise interface.
      * .NET does many things in a complicated and non-standard way.
      * This class creates a simple wrapper for Task<T> and TaskCompletionSource<T>
