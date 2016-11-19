@@ -25,17 +25,25 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 
+using OMV = OpenMetaverse;
+using OMVS = OpenMetaverse.StructuredData;
+using OMVA = OpenMetaverse.Assets;
+using OMVR = OpenMetaverse.Rendering;
+
+
 [assembly: Addin("Basil_Assets", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.8.2")]
 
 namespace org.herbal3d.Basil {
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Basil_Module")]
-    public class BasilAssets : INonSharedRegionModule {
+    public class BasilModule : INonSharedRegionModule {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static String LogHeader = "[Basil]";
 
         private BasilParams m_params;
         private IConfig m_sysConfig = null;
+
+        protected Scene m_scene;
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -49,7 +57,11 @@ namespace org.herbal3d.Basil {
         public void Initialise(IConfigSource source) {
             m_log.DebugFormat("{0}: Initialise", LogHeader);
 
+            // Load all the parameters
             m_params = new BasilParams();
+            // Set the default values
+            m_params.SetParameterDefaultValues();
+            // Overlay the default parameter values with the settings in the INI file
             m_sysConfig = source.Configs["Basil"];
             if (m_sysConfig != null) {
                 m_params.SetParameterConfigurationValues(m_sysConfig);
@@ -70,6 +82,7 @@ namespace org.herbal3d.Basil {
         // Called once for a NonSharedRegionModule when the region is initialized
         public void AddRegion(Scene scene) {
             if (m_params.Enabled) {
+                m_scene = scene;
                 m_log.DebugFormat("{0}: REGION {1} ADDED", LogHeader, scene.RegionInfo.RegionName);
             }
         }
@@ -101,6 +114,50 @@ namespace org.herbal3d.Basil {
 
         // Convert all entities in the region to basil format
         private void ProcessConvert(string module, string[] cmdparms) {
+            m_log.DebugFormat("{0}: ProcessConvert", LogHeader);
+
+            using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
+
+                using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
+
+                    m_scene.ForEachSOG(sog => {
+                        ConvertSOG(sog, assetMesher, assetFetcher)
+                            .Then(ePrimGroup => {
+                            })
+                            .Rejected(e => {
+                            }
+                        ); 
+
+                    });
+                }
+            }
+        }
+
+        // Convert all prims in SOG into meshes and return the mesh group.
+        private SimplePromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher, IAssetFetcherWrapper assetFetcher ) {
+            SimplePromise<EntityGroup> prom = new SimplePromise<EntityGroup>();
+
+            EntityGroup meshes = new EntityGroup();
+
+            int totalChildren = sog.Parts.GetLength(0);
+            foreach (SceneObjectPart sop in sog.Parts) {
+                OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
+                mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest)
+                    .Then(ePrimGroup => {
+                        lock (meshes) {
+                            m_log.DebugFormat("CreateAllMeshesInSOP: foreach oneSOP: {0}, primAsset={1}",
+                                        sop.UUID, aPrim.ID);
+                            meshes.Add(ePrimGroup);
+                        }
+                        if (--totalChildren <= 0) {
+                            prom.Resolve(meshes);
+                        }
+                    })
+                    .Rejected(e => {
+                        prom.Reject(e);
+                    });
+            }
+            return prom;
         }
     }
 }

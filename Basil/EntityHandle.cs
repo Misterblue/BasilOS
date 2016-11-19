@@ -44,6 +44,10 @@ namespace org.herbal3d.Basil {
             return m_uuid.ToString();
         }
 
+        public OMV.UUID GetUUID() {
+            return m_uuid;
+        }
+
         public override string ToString() {
             return m_uuid.ToString();
         }

@@ -68,7 +68,18 @@ namespace org.herbal3d.Basil {
             // Don't bother with async -- this call will hang until the asset is fetched
             AssetBase asset = m_scene.AssetService.Get(handle.GetOSAssetString());
             if (asset.IsBinaryAsset && asset.Type == (sbyte)OMV.AssetType.Texture) {
+                OMVA.AssetTexture tex = new OMVA.AssetTexture(handle.GetUUID(), asset.Data);
+                if (tex.Decode()) {
+                    prom.Resolve(tex);
+                }
+                else {
+                    prom.Reject(new Exception("FetchTexture: could not decode JPEG2000 texture. ID=" + handle.ToString()));
+                }
             }
+            else {
+                prom.Reject(new Exception("FetchTexture: asset was not of type texture. ID=" + handle.ToString()));
+            }
+
             return prom;
         }
 

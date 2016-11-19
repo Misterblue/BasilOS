@@ -14,14 +14,19 @@
 
       <ReferencePath>../../../bin/</ReferencePath>
       <Reference name="System"/>
+      <Reference name="System.Drawing"/>
       <Reference name="System.Reflection"/>
 
+      <Reference name="OpenMetaverse" path="../../../bin/"/>
+      <Reference name="OpenMetaverse.Rendering.Meshmerizer" path="../../../bin/"/>
       <Reference name="OpenMetaverseTypes" path="../../../bin/"/>
       <Reference name="OpenMetaverse.StructuredData" path="../../../bin/"/>
-      <Reference name="OpenMetaverse" path="../../../bin/"/>
+
+      <Reference name="PrimMesher" path="../../../bin/"/>
 
       <Reference name="OpenSim.Framework"/>
       <Reference name="OpenSim.Framework.Statistics"/>
+      <Reference name="OpenSim.Services.Interfaces"/>
       <Reference name="OpenSim.Region.Framework"/>
       <Reference name="OpenSim.Region.Framework.Scenes"/>
 

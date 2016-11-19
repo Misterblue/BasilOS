@@ -60,7 +60,11 @@ namespace org.herbal3d.Basil
         private ParameterDefnBase[] ParameterDefinitions =
         {
             new ParameterDefn<bool>("Enabled", "If false, module is not enabled to operate",
-                false )
+                false ),
+            new ParameterDefn<string>("AssetDirectory", "The directory (relative to simulator) to hold Basil assets",
+                "./BasilAssets" ),
+            new ParameterDefn<int>("WebSocketPort", "Port for the WebSocket to listen on",
+                34343 ),
         };
 
         // =====================================================================================
