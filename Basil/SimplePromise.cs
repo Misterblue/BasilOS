@@ -17,9 +17,9 @@
 using System;
 
 namespace org.herbal3d.Basil {
-    /* A simple implementation of the Promise interface.
-     * .NET does many things in a complicated and non-standard way.
-     * This class creates a simple wrapper for Task<T> and TaskCompletionSource<T>
+    /* A simple implementation of the Promise pattern.
+     *
+     * This class is a simple implementation of the promise coding pattern
      *    that looks more like the Promise/Future interface used in other languages.
      *    There exist complete and featureful alternatives
      *    (https://github.com/Real-Serious-Games/C-Sharp-Promise for instance)
@@ -36,6 +36,7 @@ namespace org.herbal3d.Basil {
      *       or
      *    someDay.Reject(Exception e);
      */
+
     public class SimplePromise<T> {
         private enum ResolutionState {
             NoValueOrResolver,
@@ -45,6 +46,7 @@ namespace org.herbal3d.Basil {
         };
 
         private ResolutionState resolverState;
+        private Object resolverStateLock;   // access lock for the above state variable
         private Action<T> resolver;
         private ResolutionState rejectorState;
         private Action<Exception> rejecter;
@@ -66,73 +68,93 @@ namespace org.herbal3d.Basil {
 
         // Called by the one doing the action to complete the promise
         public void Resolve(T val) {
-            switch (resolverState) {
-                case ResolutionState.NoValueOrResolver:
-                    resolveValue = val;
-                    resolverState = ResolutionState.HaveValue;
-                    break;
-                case ResolutionState.HaveResolver:
-                    resolver(val);
-                    resolverState = ResolutionState.ResolutionComplete;
-                    break;
-                case ResolutionState.HaveValue:
-                    throw new Exception("SimplePromise.Resolve: double resolving of value");
-                case ResolutionState.ResolutionComplete:
-                    throw new Exception("SimplePromise.Resolve: resolving of value after completion");
+            bool doit = false;
+            lock (resolverStateLock) {
+                switch (resolverState) {
+                    case ResolutionState.NoValueOrResolver:
+                        resolveValue = val;
+                        resolverState = ResolutionState.HaveValue;
+                        break;
+                    case ResolutionState.HaveResolver:
+                        doit = true;
+                        resolveValue = val;
+                        resolverState = ResolutionState.ResolutionComplete;
+                        break;
+                    case ResolutionState.HaveValue:
+                        throw new Exception("SimplePromise.Resolve: double resolving of value");
+                    case ResolutionState.ResolutionComplete:
+                        throw new Exception("SimplePromise.Resolve: resolving of value after completion");
+                }
             }
+            if (doit) resolver(resolveValue);
         }
 
         // Called by the one doing the action to reject the promise
         public void Reject(Exception e) {
-            switch (rejectorState) {
-                case ResolutionState.NoValueOrResolver:
-                    rejectValue = e;
-                    rejectorState = ResolutionState.HaveValue;
-                    break;
-                case ResolutionState.HaveResolver:
-                    rejecter(e);
-                    rejectorState = ResolutionState.ResolutionComplete;
-                    break;
-                case ResolutionState.HaveValue:
-                    throw new Exception("SimplePromise.Reject: double rejection");
-                case ResolutionState.ResolutionComplete:
-                    throw new Exception("SimplePromise.Reject: rejection after completion");
+            bool doit = false;
+            lock (resolverStateLock) {
+                switch (rejectorState) {
+                    case ResolutionState.NoValueOrResolver:
+                        rejectValue = e;
+                        rejectorState = ResolutionState.HaveValue;
+                        break;
+                    case ResolutionState.HaveResolver:
+                        doit = true;
+                        rejectValue = e;
+                        rejectorState = ResolutionState.ResolutionComplete;
+                        break;
+                    case ResolutionState.HaveValue:
+                        throw new Exception("SimplePromise.Reject: double rejection");
+                    case ResolutionState.ResolutionComplete:
+                        throw new Exception("SimplePromise.Reject: rejection after completion");
+                }
             }
+            if (doit) rejecter(rejectValue);
         }
 
         public SimplePromise<T> Then(Action<T> resolve) {
-            switch (resolverState) {
-                case ResolutionState.NoValueOrResolver:
-                    resolver = resolve;
-                    resolverState = ResolutionState.HaveResolver;
-                    break;
-                case ResolutionState.HaveValue:
-                    resolve(resolveValue);
-                    resolverState = ResolutionState.ResolutionComplete;
-                    break;
-                case ResolutionState.HaveResolver:
-                    throw new Exception("SimplePromise.Then: double resolving");
-                case ResolutionState.ResolutionComplete:
-                    throw new Exception("SimplePromise.Then: resolving after completion");
+            bool doit = false;
+            lock (resolverStateLock) {
+                switch (resolverState) {
+                    case ResolutionState.NoValueOrResolver:
+                        resolver = resolve;
+                        resolverState = ResolutionState.HaveResolver;
+                        break;
+                    case ResolutionState.HaveValue:
+                        doit = true;
+                        resolver = resolve;
+                        resolverState = ResolutionState.ResolutionComplete;
+                        break;
+                    case ResolutionState.HaveResolver:
+                        throw new Exception("SimplePromise.Then: double resolving");
+                    case ResolutionState.ResolutionComplete:
+                        throw new Exception("SimplePromise.Then: resolving after completion");
+                }
             }
+            if (doit) resolver(resolveValue);
             return this;
         }
 
         public SimplePromise<T> Rejected(Action<Exception> reject) {
-            switch (rejectorState) {
-                case ResolutionState.NoValueOrResolver:
-                    rejecter = reject;
-                    rejectorState = ResolutionState.HaveResolver;
-                    break;
-                case ResolutionState.HaveValue:
-                    reject(rejectValue);
-                    rejectorState = ResolutionState.ResolutionComplete;
-                    break;
-                case ResolutionState.HaveResolver:
-                    throw new Exception("SimplePromise.Rejected: double rejection");
-                case ResolutionState.ResolutionComplete:
-                    throw new Exception("SimplePromise.Then: rejecting after completion");
+            bool doit = false;
+            lock (resolverStateLock) {
+                switch (rejectorState) {
+                    case ResolutionState.NoValueOrResolver:
+                        rejecter = reject;
+                        rejectorState = ResolutionState.HaveResolver;
+                        break;
+                    case ResolutionState.HaveValue:
+                        doit = true;
+                        rejecter = reject;
+                        rejectorState = ResolutionState.ResolutionComplete;
+                        break;
+                    case ResolutionState.HaveResolver:
+                        throw new Exception("SimplePromise.Rejected: double rejection");
+                    case ResolutionState.ResolutionComplete:
+                        throw new Exception("SimplePromise.Then: rejecting after completion");
+                }
             }
+            if (doit) rejecter(rejectValue);
             return this;
         }
 
