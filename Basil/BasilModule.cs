@@ -135,6 +135,7 @@ namespace org.herbal3d.Basil {
 
         // Convert all prims in SOG into meshes and return the mesh group.
         private SimplePromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher, IAssetFetcherWrapper assetFetcher ) {
+            m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
             SimplePromise<EntityGroup> prom = new SimplePromise<EntityGroup>();
 
             EntityGroup meshes = new EntityGroup();
@@ -145,8 +146,8 @@ namespace org.herbal3d.Basil {
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest)
                     .Then(ePrimGroup => {
                         lock (meshes) {
-                            m_log.DebugFormat("CreateAllMeshesInSOP: foreach oneSOP: {0}, primAsset={1}",
-                                        sop.UUID, aPrim.ID);
+                            m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}",
+                                        LogHeader, sop.UUID);
                             meshes.Add(ePrimGroup);
                         }
                         if (--totalChildren <= 0) {

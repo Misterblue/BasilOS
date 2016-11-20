@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2016 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,7 +69,7 @@ namespace org.herbal3d.Basil {
     class PrimToMesh : IDisposable {
         OMVR.MeshmerizerR m_mesher;
         ILog m_log;
-        String m_logHeader = "PrimToMesh:";
+        String LogHeader = "PrimToMesh:";
 
         public PrimToMesh(ILog logger) {
             m_mesher = new OMVR.MeshmerizerR();
@@ -88,7 +88,7 @@ namespace org.herbal3d.Basil {
             try {
                 if (prim.Sculpt != null) {
                     if (prim.Sculpt.Type == OMV.SculptType.Mesh) {
-                        m_log.Debug("CreateMeshResource: creating mesh");
+                        m_log.DebugFormat("{0}: CreateMeshResource: creating mesh", LogHeader);
                         MeshFromPrimMeshData(sog, sop, prim, assetFetcher, lod)
                             .Then(ePrimGroup => {
                                 prom.Resolve(ePrimGroup);
@@ -98,7 +98,7 @@ namespace org.herbal3d.Basil {
                             });
                     }
                     else {
-                        m_log.Debug("CreateMeshResource: creating sculpty");
+                        m_log.DebugFormat("{0}: CreateMeshResource: creating sculpty", LogHeader);
                         MeshFromPrimSculptData(sog, sop, prim, assetFetcher, lod)
                             .Then(fm => {
                                 prom.Resolve(fm);
@@ -109,7 +109,7 @@ namespace org.herbal3d.Basil {
                     }
                 }
                 else {
-                    m_log.Debug("CreateMeshResource: creating primshape");
+                    m_log.DebugFormat("{0}: CreateMeshResource: creating primshape", LogHeader);
                     mesh = MeshFromPrimShapeData(sog, sop, prim, lod);
                     prom.Resolve(mesh);
                 }
@@ -161,7 +161,7 @@ namespace org.herbal3d.Basil {
                     prom.Resolve(extPrimGroup);
                 })
                 .Rejected((e) => {
-                    m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}: {2}", m_logHeader, texHandle, e);
+                    m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}: {2}", LogHeader, texHandle, e);
                     prom.Reject(e);
                 });
 
@@ -182,7 +182,7 @@ namespace org.herbal3d.Basil {
                         prom.Resolve(extPrimGroup);
                     })
                     .Rejected((e) => {
-                        m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}", m_logHeader, e);
+                        m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}", LogHeader, e);
                         prom.Reject(e);
                     });
             }
