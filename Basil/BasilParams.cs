@@ -35,7 +35,11 @@ namespace org.herbal3d.Basil
             SetParameterDefaultValues();
         }
 
-        public bool Enabled;        // True if, well, enabled.
+        #pragma warning disable CS0649  // disable 'never assigned' warnings
+        public bool Enabled;            // True if, well, enabled.
+        public string AssetDirectory;   // root directory of asset storage
+        public int WebSocketPort;       // port to open WebSocket listener
+        #pragma warning restore CS0649
 
         // =====================================================================================
         // =====================================================================================

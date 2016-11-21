@@ -46,7 +46,7 @@ namespace org.herbal3d.Basil {
         };
 
         private ResolutionState resolverState;
-        private Object resolverStateLock;   // access lock for the above state variable
+        private Object resolverStateLock = new object();   // access lock for the above state variable
         private Action<T> resolver;
         private ResolutionState rejectorState;
         private Action<Exception> rejecter;
