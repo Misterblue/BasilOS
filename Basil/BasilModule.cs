@@ -31,11 +31,13 @@ using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
 
 
-[assembly: Addin("Basil_Assets", "1.0")]
+[assembly: Addin("Basil", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.8.2")]
 
 namespace org.herbal3d.Basil {
+
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Basil_Module")]
+
     public class BasilModule : INonSharedRegionModule {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static String LogHeader = "[Basil]";
