@@ -79,6 +79,7 @@ namespace org.herbal3d.Basil
         {
             public string name;         // string name of the parameter
             public string desc;         // a short description of what the parameter means
+            public BasilParams context; // context for setting and getting values
             public ParameterDefnBase(string pName, string pDesc)
             {
                 name = pName;
@@ -119,27 +120,29 @@ namespace org.herbal3d.Basil
             // Use reflection to find the property named 'pName' in Param and assign 'val' to same.
             private void SetValueByName(string pName, T val)
             {
-                PropertyInfo prop = this.GetType().GetProperty(pName, BindingFlags.Public | BindingFlags.FlattenHierarchy);
+                FieldInfo prop = context.GetType().GetField(pName);
                 if (prop == null)
                 {
                     // This should only be output when someone adds a new INI parameter and misspells the name.
                     // m_log.ErrorFormat("{0} SetValueByName: did not find '{1}'. Verify specified property name is the same as the given INI parameters name.", LogHeader, pName);
+                    System.Console.WriteLine("{0} SetValueByName: did not find '{1}'. Verify specified field name is the same as the given INI parameters name.", LogHeader, pName);
                 }
                 else
                 {
-                    prop.SetValue(null, val, null);
+                    prop.SetValue(context, val);
                 }
             }
             // Use reflection to find the property named 'pName' in Param and return the value in same.
             private T GetValueByName(string pName)
             {
-                PropertyInfo prop = this.GetType().GetProperty(pName, BindingFlags.Public | BindingFlags.FlattenHierarchy);
+                FieldInfo prop = context.GetType().GetField(pName);
                 if (prop == null)
                 {
                     // This should only be output when someone adds a new INI parameter and misspells the name.
                     // m_log.ErrorFormat("{0} GetValueByName: did not find '{1}'. Verify specified property name is the same as the given INI parameter name.", LogHeader, pName);
+                    System.Console.WriteLine("{0} GetValueByName: did not find '{1}'. Verify specified field name is the same as the given INI parameter name.", LogHeader, pName);
                 }
-                return (T)prop.GetValue(null, null);
+                return (T)prop.GetValue(context);
             }
             public override void AssignDefault()
             {
@@ -161,7 +164,7 @@ namespace org.herbal3d.Basil
                 }
                 catch (Exception e)
                 {
-                    // m_log.ErrorFormat("{0} Exception getting parser for type '{1}': {2}", LogHeader, genericType, e);
+                    System.Console.WriteLine("{0} Exception getting parser for type '{1}': {2}", LogHeader, genericType, e);
                     parser = null;
                 }
                 if (parser != null)
@@ -190,7 +193,7 @@ namespace org.herbal3d.Basil
         //    ParameterDefn structure.
         // Case does not matter as names are compared after converting to lower case.
         // Returns 'false' if the parameter is not found.
-        internal bool TryGetParameter(string paramName, out ParameterDefnBase defn)
+        public bool TryGetParameter(string paramName, out ParameterDefnBase defn)
         {
             bool ret = false;
             ParameterDefnBase foundDefn = null;
@@ -210,19 +213,22 @@ namespace org.herbal3d.Basil
         }
 
         // Pass through the settable parameters and set the default values
-        internal void SetParameterDefaultValues()
+        public void SetParameterDefaultValues()
         {
             foreach (ParameterDefnBase parm in ParameterDefinitions)
             {
+                parm.context = this;
                 parm.AssignDefault();
             }
         }
 
         // Get user set values out of the ini file.
-        internal  void SetParameterConfigurationValues(IConfig cfg)
+        public  void SetParameterConfigurationValues(IConfig cfg)
         {
             foreach (ParameterDefnBase parm in ParameterDefinitions)
             {
+                System.Console.WriteLine("BasilParams: parm={0}, desc='{1}'", parm.name, parm.desc);
+                parm.context = this;
                 parm.SetValue(cfg.GetString(parm.name, parm.GetValue()));
             }
         }
