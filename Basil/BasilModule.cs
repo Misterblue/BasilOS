@@ -16,9 +16,9 @@
 
 using System;
 using System.Reflection;
+using Mono.Addins;
 
 using log4net;
-using Mono.Addins;
 using Nini.Config;
 
 using OpenSim.Framework;
@@ -30,14 +30,9 @@ using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
 
-
-[assembly: Addin("Basil", "1.0")]
-[assembly: AddinDependency("OpenSim", "0.8.2")]
-
 namespace org.herbal3d.Basil {
 
-    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Basil_Module")]
-
+    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "BasilModule")]
     public class BasilModule : INonSharedRegionModule {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static String LogHeader = "[Basil]";
