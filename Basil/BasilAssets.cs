@@ -44,8 +44,6 @@ namespace org.herbal3d.Basil {
         public OSAssetFetcher(Scene scene, ILog logger) {
             m_scene = scene;
             m_log = logger;
-
-            IAssetService frog = m_scene.AssetService;
         }
 
         public override SimplePromise<byte[]> FetchRawAsset(EntityHandle handle) {
@@ -69,11 +67,17 @@ namespace org.herbal3d.Basil {
             AssetBase asset = m_scene.AssetService.Get(handle.GetOSAssetString());
             if (asset.IsBinaryAsset && asset.Type == (sbyte)OMV.AssetType.Texture) {
                 OMVA.AssetTexture tex = new OMVA.AssetTexture(handle.GetUUID(), asset.Data);
-                if (tex.Decode()) {
-                    prom.Resolve(tex);
+                try {
+                    if (tex.Decode()) {
+                        prom.Resolve(tex);
+                    }
+                    else {
+                        prom.Reject(new Exception("FetchTexture: could not decode JPEG2000 texture. ID=" + handle.ToString()));
+                    }
                 }
-                else {
-                    prom.Reject(new Exception("FetchTexture: could not decode JPEG2000 texture. ID=" + handle.ToString()));
+                catch (Exception e) {
+                    prom.Reject(new Exception("FetchTexture: exception decoding JPEG2000 texture. ID=" + handle.ToString()
+                                + ", e=" + e.ToString()));
                 }
             }
             else {

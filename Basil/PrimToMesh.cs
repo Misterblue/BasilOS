@@ -33,39 +33,6 @@ using OpenSim.Region.Framework.Scenes;
 
 namespace org.herbal3d.Basil {
 
-    // An extended description of an entity that includes the original
-    //     prim description as well as the mesh.
-    // All the information about the meshed piece is collected here so other mappings
-    //     can happen with the returned information (creating Basil Entitities, etc)
-    public class ExtendedPrim {
-        public SceneObjectGroup SOG;
-        public SceneObjectPart SOP;
-        public OMV.Primitive primitive;
-        public OMVA.PrimObject primObject;
-        public OMVR.FacetedMesh facetedMesh;
-    };
-
-    // A prim mesh can be made up of many versions
-    public enum PrimGroupType {
-        physics,
-        lod1,   // this is default and what is built for a standard prim
-        lod2,
-        lod3,
-        lod4
-    };
-
-    // Some prims (like the mesh type) have multiple versions to make one entity
-    public class ExtendedPrimGroup: Dictionary<PrimGroupType, ExtendedPrim> {
-        public ExtendedPrimGroup() : base() {
-        }
-    }
-
-    // some entities are made of multiple prims (linksets)
-    public class EntityGroup : List<ExtendedPrimGroup> {
-        public EntityGroup() : base() {
-        }
-    }
-
     class PrimToMesh : IDisposable {
         OMVR.MeshmerizerR m_mesher;
         ILog m_log;
@@ -132,6 +99,8 @@ namespace org.herbal3d.Basil {
             extPrim.SOP = sop;
             extPrim.primitive = prim;
 
+            m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
+
             ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup();
             extPrimGroup.Add(PrimGroupType.lod1, extPrim);
 
@@ -154,6 +123,14 @@ namespace org.herbal3d.Basil {
                     extPrim.SOG = sog;
                     extPrim.SOP = sop;
                     extPrim.primitive = prim;
+
+                    if (fMesh.Faces.Count == 1) {
+                        m_log.DebugFormat("{0} MeshFromSculptData. verts={1}, ind={2}", LogHeader,
+                                fMesh.Faces[0].Vertices.Count, fMesh.Faces[0].Indices.Count);
+                    }
+                    else {
+                        m_log.DebugFormat("{0} MeshFromSculptData. faces={1}", LogHeader, fMesh.Faces.Count);
+                    }
 
                     ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup();
                     extPrimGroup.Add(PrimGroupType.lod1, extPrim);
@@ -216,7 +193,6 @@ namespace org.herbal3d.Basil {
                 }
                 start = data.Position;
             }
-
 
             Dictionary<String, String> lodSections = new Dictionary<string, string>() {
                 {"high_lod", "lod1" },
