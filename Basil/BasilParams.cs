@@ -24,14 +24,11 @@ using System.Text;
 
 using Nini.Config;
 
-namespace org.herbal3d.Basil
-{
-    class BasilParams
-    {
+namespace org.herbal3d.BasilOS {
+    class BasilParams {
         private static string LogHeader = "[BASIL PARAMS]";
 
-        public BasilParams()
-        {
+        public BasilParams() {
             SetParameterDefaultValues();
         }
 

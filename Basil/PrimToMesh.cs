@@ -30,16 +30,17 @@ using OMVR = OpenMetaverse.Rendering;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
 
-
-namespace org.herbal3d.Basil {
+namespace org.herbal3d.BasilOS {
 
     class PrimToMesh : IDisposable {
         OMVR.MeshmerizerR m_mesher;
+        private MeshCache m_meshCache;
         ILog m_log;
         String LogHeader = "PrimToMesh:";
 
         public PrimToMesh(ILog logger) {
             m_mesher = new OMVR.MeshmerizerR();
+            m_meshCache = new MeshCache(m_log);
             m_log = logger;
         }
 
@@ -60,7 +61,7 @@ namespace org.herbal3d.Basil {
                             .Then(ePrimGroup => {
                                 prom.Resolve(ePrimGroup);
                             })
-                            .Rejected(e => {
+                            .Catch(e => {
                                 prom.Reject(e);
                             });
                     }
@@ -70,7 +71,7 @@ namespace org.herbal3d.Basil {
                             .Then(fm => {
                                 prom.Resolve(fm);
                             })
-                            .Rejected(e => {
+                            .Catch(e => {
                                 prom.Reject(e);
                             });
                     }
@@ -90,19 +91,21 @@ namespace org.herbal3d.Basil {
 
         private ExtendedPrimGroup MeshFromPrimShapeData(SceneObjectGroup sog, SceneObjectPart sop,
                                 OMV.Primitive prim, OMVR.DetailLevel lod) {
+            OMVR.FacetedMesh mesh;
 
-            OMVR.FacetedMesh mesh = m_mesher.GenerateFacetedMesh(prim, lod);
+            int primHash = prim.GetHashCode();
+            if (m_meshCache.Contains(primHash)) {
+                mesh = m_meshCache.GetMesh(primHash);
+            }
+            else {
+                mesh = m_mesher.GenerateFacetedMesh(prim, lod);
+            }
 
-            ExtendedPrim extPrim = new ExtendedPrim();
-            extPrim.facetedMesh = mesh;
-            extPrim.SOG = sog;
-            extPrim.SOP = sop;
-            extPrim.primitive = prim;
+            ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, mesh);
 
             m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
 
-            ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup();
-            extPrimGroup.Add(PrimGroupType.lod1, extPrim);
+            ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
 
             return extPrimGroup;
         }
@@ -118,11 +121,7 @@ namespace org.herbal3d.Basil {
                 .Then((bm) => {
                     OMVR.FacetedMesh fMesh = m_mesher.GenerateFacetedSculptMesh(prim, bm.Image.ExportBitmap(), lod);
 
-                    ExtendedPrim extPrim = new ExtendedPrim();
-                    extPrim.facetedMesh = fMesh;
-                    extPrim.SOG = sog;
-                    extPrim.SOP = sop;
-                    extPrim.primitive = prim;
+                    ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, fMesh);
 
                     if (fMesh.Faces.Count == 1) {
                         m_log.DebugFormat("{0} MeshFromSculptData. verts={1}, ind={2}", LogHeader,
@@ -132,12 +131,11 @@ namespace org.herbal3d.Basil {
                         m_log.DebugFormat("{0} MeshFromSculptData. faces={1}", LogHeader, fMesh.Faces.Count);
                     }
 
-                    ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup();
-                    extPrimGroup.Add(PrimGroupType.lod1, extPrim);
+                    ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
 
                     prom.Resolve(extPrimGroup);
                 })
-                .Rejected((e) => {
+                .Catch((e) => {
                     m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}: {2}", LogHeader, texHandle, e);
                     prom.Reject(e);
                 });
@@ -155,10 +153,22 @@ namespace org.herbal3d.Basil {
             try {
                 assetFetcher.FetchRawAsset(meshHandle)
                     .Then(meshBytes => {
-                        ExtendedPrimGroup extPrimGroup = UnpackMeshData(prim, meshBytes);
-                        prom.Resolve(extPrimGroup);
+                        OMVA.AssetMesh meshAsset = new OMVA.AssetMesh(prim.ID, meshBytes);
+                        OMVR.FacetedMesh fMesh;
+                        if (OMVR.FacetedMesh.TryDecodeFromAsset(prim, meshAsset, lod, out fMesh)) {
+                            ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, fMesh);
+                            m_log.DebugFormat("{0} MeshFromPrimMeshData: created mesh.. Faces={0}", 
+                                                LogHeader, extPrim.facetedMesh.Faces.Count);
+
+                            ExtendedPrimGroup eGroup = new ExtendedPrimGroup(extPrim);
+                            prom.Resolve(eGroup);
+                        }
+                        else {
+                            prom.Reject(new Exception("MeshFromPrimMeshData: could not decode mesh information from asset. ID="
+                                            + prim.ID.ToString()));
+                        }
                     })
-                    .Rejected((e) => {
+                    .Catch((e) => {
                         m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}", LogHeader, e);
                         prom.Reject(e);
                     });
@@ -168,48 +178,6 @@ namespace org.herbal3d.Basil {
             }
 
             return prom;
-        }
-
-        // =========================================================
-        public ExtendedPrimGroup UnpackMeshData(OMV.Primitive prim, byte[] rawMeshData) {
-            ExtendedPrimGroup subMeshes = new ExtendedPrimGroup();
-
-            OMVS.OSDMap meshOsd = new OMVS.OSDMap();
-            List<PrimMesher.Coord> coords = new List<PrimMesher.Coord>();
-            List<PrimMesher.Face> faces = new List<PrimMesher.Face>();
-
-            long start = 0;
-            using (MemoryStream data = new MemoryStream(rawMeshData)) {
-                try {
-                    OMVS.OSD osd = OMVS.OSDParser.DeserializeLLSDBinary(rawMeshData);
-                    if (osd is OMVS.OSDMap)
-                        meshOsd = (OMVS.OSDMap)osd;
-                    else {
-                        throw new Exception("UnpackMeshData: parsing mesh data did not return an OSDMap");
-                    }
-                }
-                catch (Exception e) {
-                    m_log.Error("UnpackMeshData: Exception deserializing mesh asset header:" + e.ToString());
-                }
-                start = data.Position;
-            }
-
-            Dictionary<String, String> lodSections = new Dictionary<string, string>() {
-                {"high_lod", "lod1" },
-                {"medium_lod", "lod2" },
-                {"low_lod", "lod3" },
-                {"lowest_lod", "lod4" },
-                {"physics_shape", "lod4" },
-                {"physics_mesh", "lod4" },
-                {"physics_convex", "lod4" },
-            };
-
-            // TODO: refactor mesh unpacker in ubMeshmerizer to allow unpacking the various mesh versions rather
-            //     than just unpacking the physical version
-            foreach (KeyValuePair<string,string> lodSection in lodSections) {
-            }
-
-            return subMeshes;
         }
 
         public void Dispose() {

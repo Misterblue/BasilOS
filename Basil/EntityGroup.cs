@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,7 +11,7 @@ using OMVR = OpenMetaverse.Rendering;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
 
-namespace org.herbal3d.Basil {
+namespace org.herbal3d.BasilOS {
     // An extended description of an entity that includes the original
     //     prim description as well as the mesh.
     // All the information about the meshed piece is collected here so other mappings
@@ -22,6 +22,27 @@ namespace org.herbal3d.Basil {
         public OMV.Primitive primitive;
         public OMVA.PrimObject primObject;
         public OMVR.FacetedMesh facetedMesh;
+
+        public ExtendedPrim() {
+        }
+
+        public ExtendedPrim(SceneObjectGroup pSOG, SceneObjectPart pSOP, OMV.Primitive pPrim, OMVR.FacetedMesh pFMesh) {
+            SOG = pSOG;
+            SOP = pSOP;
+            primitive = pPrim;
+            facetedMesh = pFMesh;
+        }
+
+        public override int GetHashCode() {
+            int ret = 0;
+            if (primitive != null) {
+                ret = primitive.GetHashCode();
+            }
+            else {
+                ret = base.GetHashCode();
+            }
+            return ret;
+        }
     };
 
     // A prim mesh can be made up of many versions
@@ -36,6 +57,11 @@ namespace org.herbal3d.Basil {
     // Some prims (like the mesh type) have multiple versions to make one entity
     public class ExtendedPrimGroup: Dictionary<PrimGroupType, ExtendedPrim> {
         public ExtendedPrimGroup() : base() {
+        }
+
+        // Create with a single prim
+        public ExtendedPrimGroup(ExtendedPrim singlePrim) : base() {
+            this.Add(PrimGroupType.lod1, singlePrim);
         }
     }
 

@@ -25,7 +25,7 @@ using OpenSim.Services.Interfaces;
 using OMV = OpenMetaverse;
 using OMVA = OpenMetaverse.Assets;
 
-namespace org.herbal3d.Basil {
+namespace org.herbal3d.BasilOS {
 
     // A SimplePromise based interface to the asset fetcher
     public abstract class IAssetFetcherWrapper : IDisposable {

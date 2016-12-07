@@ -15,6 +15,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Mono.Addins;
 
@@ -30,7 +31,7 @@ using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
 
-namespace org.herbal3d.Basil {
+namespace org.herbal3d.BasilOS {
 
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "BasilModule")]
     public class BasilModule : INonSharedRegionModule {
@@ -113,6 +114,8 @@ namespace org.herbal3d.Basil {
         private void ProcessConvert(string module, string[] cmdparms) {
             m_log.DebugFormat("{0} ProcessConvert", LogHeader);
 
+            List<EntityGroup> allSOGs = new List<EntityGroup>();
+
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
                 using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
@@ -120,8 +123,9 @@ namespace org.herbal3d.Basil {
                     m_scene.ForEachSOG(sog => {
                         ConvertSOG(sog, assetMesher, assetFetcher)
                             .Then(ePrimGroup => {
+                                allSOGs.Add(ePrimGroup);
                             })
-                            .Rejected(e => {
+                            .Catch(e => {
                             }
                         ); 
 
@@ -152,7 +156,7 @@ namespace org.herbal3d.Basil {
                             prom.Resolve(meshes);
                         }
                     })
-                    .Rejected(e => {
+                    .Catch(e => {
                         prom.Reject(e);
                     });
             }

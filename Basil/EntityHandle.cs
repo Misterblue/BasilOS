@@ -25,7 +25,7 @@ using System.Collections.Generic;
 
 using OMV = OpenMetaverse;
 
-namespace org.herbal3d.Basil {
+namespace org.herbal3d.BasilOS {
 
     // Class for collecting all me mess around asset names.
     // All filename, type, and version conversions are done here.

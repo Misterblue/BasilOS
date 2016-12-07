@@ -16,7 +16,7 @@
 
 using System;
 
-namespace org.herbal3d.Basil {
+namespace org.herbal3d.BasilOS {
     /* A simple implementation of the Promise pattern.
      *
      * This class is a simple implementation of the promise coding pattern
@@ -30,7 +30,8 @@ namespace org.herbal3d.Basil {
      *    SimplePromise<T> someDay = new SimplePromise(resolver, rejecter);
      *      or
      *    SimplePromise<T> someDay = new SimplePromise();
-     *    somday.Then(resolver).Rejected(rejecter);
+     *    somday.Then(resolver).Catch(rejecter);
+     *    (NOTE: this DOES NOT chain 'then's so only simple, single level constructs allowed
      *  The execution routine calls:
      *    someDay.Resolve(T value);
      *       or
@@ -135,7 +136,7 @@ namespace org.herbal3d.Basil {
             return this;
         }
 
-        public SimplePromise<T> Rejected(Action<Exception> reject) {
+        public SimplePromise<T> Catch(Action<Exception> reject) {
             bool doit = false;
             lock (resolverStateLock) {
                 switch (rejectorState) {
