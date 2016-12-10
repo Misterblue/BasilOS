@@ -48,7 +48,7 @@ namespace org.herbal3d.BasilOS {
         /// Create and return a faceted mesh.
         /// </summary>
         public SimplePromise<ExtendedPrimGroup> CreateMeshResource(SceneObjectGroup sog, SceneObjectPart sop,
-                    OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod) {
+                    OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod, BasilStats stats) {
 
             SimplePromise<ExtendedPrimGroup> prom = new SimplePromise<ExtendedPrimGroup>();
 
@@ -57,6 +57,7 @@ namespace org.herbal3d.BasilOS {
                 if (prim.Sculpt != null) {
                     if (prim.Sculpt.Type == OMV.SculptType.Mesh) {
                         m_log.DebugFormat("{0}: CreateMeshResource: creating mesh", LogHeader);
+                        stats.numMeshes++;
                         MeshFromPrimMeshData(sog, sop, prim, assetFetcher, lod)
                             .Then(ePrimGroup => {
                                 prom.Resolve(ePrimGroup);
@@ -67,6 +68,7 @@ namespace org.herbal3d.BasilOS {
                     }
                     else {
                         m_log.DebugFormat("{0}: CreateMeshResource: creating sculpty", LogHeader);
+                        stats.numSculpties++;
                         MeshFromPrimSculptData(sog, sop, prim, assetFetcher, lod)
                             .Then(fm => {
                                 prom.Resolve(fm);
@@ -78,6 +80,7 @@ namespace org.herbal3d.BasilOS {
                 }
                 else {
                     m_log.DebugFormat("{0}: CreateMeshResource: creating primshape", LogHeader);
+                    stats.numPrims++;
                     mesh = MeshFromPrimShapeData(sog, sop, prim, lod);
                     prom.Resolve(mesh);
                 }

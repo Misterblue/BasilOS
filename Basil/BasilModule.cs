@@ -114,28 +114,68 @@ namespace org.herbal3d.BasilOS {
         private void ProcessConvert(string module, string[] cmdparms) {
             m_log.DebugFormat("{0} ProcessConvert", LogHeader);
 
-            List<EntityGroup> allSOGs = new List<EntityGroup>();
+            if (SceneManager.Instance == null || SceneManager.Instance.CurrentScene == null)
+            {
+                m_log.Error("Error: no region selected. Use 'change region' to select a region.");
+                return;
+            }
 
-            using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
+            if (SceneManager.Instance.CurrentScene == m_scene) {
 
-                using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
+                List<EntityGroup> allSOGs = new List<EntityGroup>();
 
-                    m_scene.ForEachSOG(sog => {
-                        ConvertSOG(sog, assetMesher, assetFetcher)
-                            .Then(ePrimGroup => {
-                                allSOGs.Add(ePrimGroup);
-                            })
-                            .Catch(e => {
-                            }
-                        ); 
+                using (BasilStats stats = new BasilStats(m_scene, m_log)) {
 
-                    });
+                    using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
+
+                        using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
+
+                            m_scene.ForEachSOG(sog => {
+                                ConvertSOG(sog, assetMesher, assetFetcher, stats)
+                                    .Then(ePrimGroup => {
+                                        allSOGs.Add(ePrimGroup);
+                                    })
+                                    .Catch(e => {
+                                    }
+                                ); 
+
+                            });
+                        }
+
+                        // Everything has been converted into meshes and available in 'allSOGs'.
+                        stats.numEntities = allSOGs.Count;  // total number of entities
+                        allSOGs.ForEach(eGroup => {
+                            eGroup.ForEach(ePGroup => {
+                                if (ePGroup.Count > 1) {
+                                    // if the entity is made of multiple pieces, they are a linkset
+                                    stats.numLinksets++;
+                                }
+                                foreach (KeyValuePair<PrimGroupType, ExtendedPrim> kvp in ePGroup) {
+                                    ExtendedPrim ep = kvp.Value;
+                                    if (0 != (int)ep.SOP.ScriptEvents) {
+                                        stats.numEntitiesWithScripts++;
+                                    }
+                                    OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
+
+                                }
+                            });
+                        });
+                    }
+
+                    m_log.InfoFormat("{0} ", LogHeader);
+                    m_log.InfoFormat("{0} {1} numPrims={2}", LogHeader, m_scene.Name, stats.numPrims);
+                    m_log.InfoFormat("{0} {1} numSculpties={2}", LogHeader, m_scene.Name, stats.numSculpties);
+                    m_log.InfoFormat("{0} {1} numMeshes={2}", LogHeader, m_scene.Name, stats.numMeshes);
+                    m_log.InfoFormat("{0} {1} numEntities={2}", LogHeader, m_scene.Name, stats.numEntities);
+                    m_log.InfoFormat("{0} {1} numLinksets={2}", LogHeader, m_scene.Name, stats.numLinksets);
+                    m_log.InfoFormat("{0} {1} numEntitiesWithScripts={2}", LogHeader, m_scene.Name, stats.numEntitiesWithScripts);
                 }
             }
         }
 
         // Convert all prims in SOG into meshes and return the mesh group.
-        private SimplePromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher, IAssetFetcherWrapper assetFetcher ) {
+        private SimplePromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
+                        IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
             m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
             SimplePromise<EntityGroup> prom = new SimplePromise<EntityGroup>();
 
@@ -144,7 +184,7 @@ namespace org.herbal3d.BasilOS {
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
-                mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest)
+                mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Then(ePrimGroup => {
                         lock (meshes) {
                             m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}",
