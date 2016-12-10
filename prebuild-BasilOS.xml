@@ -27,7 +27,8 @@
       <Reference name="OpenSim.Services.Interfaces"/>
       <Reference name="OpenSim.Region.Framework"/>
 
-      <Reference name="Newtonsoft.Json" path="libs"/>
+      <Reference name="Newtonsoft.Json" path="../libs"/>
+      <Reference name="RSG.Promise" path="../libs"/>
 
       <Reference name="Nini" path="../../../bin/"/>
       <Reference name="log4net" path="../../../bin/"/>
@@ -38,5 +39,8 @@
         <Match pattern="*.cs" recurse="true">
           <Exclude name="Tests" pattern="Tests"/>
         </Match>
+        <Match path="../libs" pattern="*.dll" recurse="false" buildAction="Copy" destination="../../../bin/"/>
+        <Match path="../libs" pattern="*.pdb" recurse="false" buildAction="Copy" destination="../../../bin/"/>
+        <Match path="../libs" pattern="*.xml" recurse="false" buildAction="Copy" destination="../../../bin/"/>
       </Files>
     </Project>

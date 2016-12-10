@@ -26,6 +26,8 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 
+using RSG;
+
 using OMV = OpenMetaverse;
 using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
@@ -112,7 +114,6 @@ namespace org.herbal3d.BasilOS {
 
         // Convert all entities in the region to basil format
         private void ProcessConvert(string module, string[] cmdparms) {
-            m_log.DebugFormat("{0} ProcessConvert", LogHeader);
 
             if (SceneManager.Instance == null || SceneManager.Instance.CurrentScene == null)
             {
@@ -120,7 +121,10 @@ namespace org.herbal3d.BasilOS {
                 return;
             }
 
-            if (SceneManager.Instance.CurrentScene == m_scene) {
+            m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, m_scene={2}", LogHeader,
+                        SceneManager.Instance.CurrentScene.Name, m_scene.Name);
+
+            if (SceneManager.Instance.CurrentScene.Name == m_scene.Name) {
 
                 List<EntityGroup> allSOGs = new List<EntityGroup>();
 
@@ -136,6 +140,7 @@ namespace org.herbal3d.BasilOS {
                                         allSOGs.Add(ePrimGroup);
                                     })
                                     .Catch(e => {
+                                        m_log.ErrorFormat("{0} Error converting SOG. UUID={1}: {2}", LogHeader, sog.UUID, e);
                                     }
                                 ); 
 
@@ -174,10 +179,10 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Convert all prims in SOG into meshes and return the mesh group.
-        private SimplePromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
+        private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
                         IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
             m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
-            SimplePromise<EntityGroup> prom = new SimplePromise<EntityGroup>();
+            var prom = new Promise<EntityGroup>();
 
             EntityGroup meshes = new EntityGroup();
 
@@ -197,6 +202,7 @@ namespace org.herbal3d.BasilOS {
                         }
                     })
                     .Catch(e => {
+                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
                         prom.Reject(e);
                     });
             }

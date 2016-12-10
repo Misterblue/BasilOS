@@ -22,15 +22,17 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
 
+using RSG;
+
 using OMV = OpenMetaverse;
 using OMVA = OpenMetaverse.Assets;
 
 namespace org.herbal3d.BasilOS {
 
-    // A SimplePromise based interface to the asset fetcher
+    // A Promise based interface to the asset fetcher
     public abstract class IAssetFetcherWrapper : IDisposable {
-        public abstract SimplePromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle);
-        public abstract SimplePromise<byte[]> FetchRawAsset(EntityHandle handle);
+        public abstract IPromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle);
+        public abstract IPromise<byte[]> FetchRawAsset(EntityHandle handle);
         public abstract void Dispose();
     }
 
@@ -46,8 +48,8 @@ namespace org.herbal3d.BasilOS {
             m_log = logger;
         }
 
-        public override SimplePromise<byte[]> FetchRawAsset(EntityHandle handle) {
-            SimplePromise<byte[]> prom = new SimplePromise<byte[]>();
+        public override IPromise<byte[]> FetchRawAsset(EntityHandle handle) {
+            var prom = new Promise<byte[]>();
 
             // Don't bother with async -- this call will hang until the asset is fetched
             byte[] returnBytes = m_scene.AssetService.GetData(handle.GetOSAssetString());
@@ -60,8 +62,8 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
-        public override SimplePromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle) {
-            SimplePromise<OMVA.AssetTexture> prom = new SimplePromise<OMVA.AssetTexture>();
+        public override IPromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle) {
+            var prom = new Promise<OMVA.AssetTexture>();
 
             // Don't bother with async -- this call will hang until the asset is fetched
             AssetBase asset = m_scene.AssetService.Get(handle.GetOSAssetString());

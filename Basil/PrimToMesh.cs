@@ -22,6 +22,8 @@ using System.Text;
 
 using log4net;
 
+using RSG;
+
 using OMV = OpenMetaverse;
 using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
@@ -47,10 +49,10 @@ namespace org.herbal3d.BasilOS {
         /// <summary>
         /// Create and return a faceted mesh.
         /// </summary>
-        public SimplePromise<ExtendedPrimGroup> CreateMeshResource(SceneObjectGroup sog, SceneObjectPart sop,
+        public IPromise<ExtendedPrimGroup> CreateMeshResource(SceneObjectGroup sog, SceneObjectPart sop,
                     OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod, BasilStats stats) {
 
-            SimplePromise<ExtendedPrimGroup> prom = new SimplePromise<ExtendedPrimGroup>();
+            var prom = new Promise<ExtendedPrimGroup>();
 
             ExtendedPrimGroup mesh;
             try {
@@ -113,10 +115,10 @@ namespace org.herbal3d.BasilOS {
             return extPrimGroup;
         }
 
-        private SimplePromise<ExtendedPrimGroup> MeshFromPrimSculptData(SceneObjectGroup sog, SceneObjectPart sop,
+        private IPromise<ExtendedPrimGroup> MeshFromPrimSculptData(SceneObjectGroup sog, SceneObjectPart sop,
                                 OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod) {
 
-            SimplePromise<ExtendedPrimGroup> prom = new SimplePromise<ExtendedPrimGroup>();
+            var prom = new Promise<ExtendedPrimGroup>();
 
             // Get the asset that the sculpty is built on
             EntityHandle texHandle = new EntityHandle(prim.Sculpt.SculptTexture);
@@ -146,10 +148,10 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
-        private SimplePromise<ExtendedPrimGroup> MeshFromPrimMeshData(SceneObjectGroup sog, SceneObjectPart sop,
+        private IPromise<ExtendedPrimGroup> MeshFromPrimMeshData(SceneObjectGroup sog, SceneObjectPart sop,
                                 OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod) {
 
-            SimplePromise<ExtendedPrimGroup> prom = new SimplePromise<ExtendedPrimGroup>();
+            var prom = new Promise<ExtendedPrimGroup>();
 
             // Get the asset that the mesh is built on
             EntityHandle meshHandle = new EntityHandle(prim.Sculpt.SculptTexture);
