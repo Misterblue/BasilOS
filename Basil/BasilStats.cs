@@ -15,10 +15,13 @@
  */
 
 using System;
+using System.Collections.Generic;
 
 using log4net;
 
 using OpenSim.Region.Framework.Scenes;
+
+using OMV = OpenMetaverse;
 
 namespace org.herbal3d.BasilOS {
     public class BasilStats : IDisposable {
@@ -32,12 +35,17 @@ namespace org.herbal3d.BasilOS {
         public int numFaces = 0;
         public int numNullTexturedFaces = 0;
 
+        public Dictionary<int, int> textureCount = new Dictionary<int, int>();
+        public List<OMV.UUID> textureIDs = new List<OMV.UUID>();
+
         public Scene m_scene;
         public ILog m_log;
 
         public BasilStats(Scene pScene, ILog pLog) {
             m_scene = pScene;
             m_log = pLog;
+            textureCount = new Dictionary<int, int>();
+            textureIDs = new List<OMV.UUID>();
         }
 
         #region IDisposable Support
@@ -46,12 +54,11 @@ namespace org.herbal3d.BasilOS {
         protected virtual void Dispose(bool disposing) {
             if (!disposedValue) {
                 if (disposing) {
-                    // TODO: dispose managed state (managed objects).
+                    textureCount.Clear();
+                    textureCount = null;
+                    textureIDs.Clear();
+                    textureIDs = null;
                 }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
-                // TODO: set large fields to null.
-
                 disposedValue = true;
             }
         }
