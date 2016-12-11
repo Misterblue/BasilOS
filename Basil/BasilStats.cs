@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2016 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +29,8 @@ namespace org.herbal3d.BasilOS {
         public int numEntities = 0;
         public int numLinksets = 0;
         public int numEntitiesWithScripts = 0;
+        public int numFaces = 0;
+        public int numNullTexturedFaces = 0;
 
         public Scene m_scene;
         public ILog m_log;

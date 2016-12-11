@@ -112,6 +112,30 @@ namespace org.herbal3d.BasilOS {
 
         }
 
+        // Selection of a particular face of a prim. Contains index and ExtendedPrim
+        //     so we have both the local coords and the group coords.
+        private class FaceSelection {
+            public ExtendedPrim containingPrim;
+            public int faceIndex;
+
+            public FaceSelection(ExtendedPrim pContainingPrim, int pI) {
+                containingPrim = pContainingPrim;
+                faceIndex = pI;
+            }
+        }
+
+        // Lists of similar faces indexed by the texture hash
+        private class SimilarFaces : Dictionary<int, List<FaceSelection>> {
+            public SimilarFaces() : base() {
+            }
+            public void AddSimilarFace(int pHash, FaceSelection pFace) {
+                if (! this.ContainsKey(pHash)) {
+                    this.Add(pHash, new List<FaceSelection>());
+                }
+                this[pHash].Add(pFace);
+            }
+        }
+
         // Convert all entities in the region to basil format
         private void ProcessConvert(string module, string[] cmdparms) {
 
@@ -128,7 +152,13 @@ namespace org.herbal3d.BasilOS {
 
                 List<EntityGroup> allSOGs = new List<EntityGroup>();
 
+                EntityGroupList scriptedEntities = new EntityGroupList();
+                EntityGroupList staticEntities = new EntityGroupList();
+                SimilarFaces similarFaces = new SimilarFaces();
+
                 using (BasilStats stats = new BasilStats(m_scene, m_log)) {
+                    Dictionary<int, int> textureCount = new Dictionary<int, int>();
+                    List<OMV.UUID> textureIDs = new List<OMV.UUID>();
 
                     using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
 
@@ -148,23 +178,107 @@ namespace org.herbal3d.BasilOS {
                         }
 
                         // Everything has been converted into meshes and available in 'allSOGs'.
+
+                        // Gather statistics
                         stats.numEntities = allSOGs.Count;  // total number of entities
                         allSOGs.ForEach(eGroup => {
+                            if (eGroup.Count > 1) {
+                                // if the entity is made of multiple pieces, they are a linkset
+                                stats.numLinksets++;
+                            }
+                            // For each prim in the entity
                             eGroup.ForEach(ePGroup => {
-                                if (ePGroup.Count > 1) {
-                                    // if the entity is made of multiple pieces, they are a linkset
-                                    stats.numLinksets++;
-                                }
-                                foreach (KeyValuePair<PrimGroupType, ExtendedPrim> kvp in ePGroup) {
-                                    ExtendedPrim ep = kvp.Value;
+                                // only check for the primary mesh
+                                if (ePGroup.ContainsKey(PrimGroupType.lod1)) {
+                                    ExtendedPrim ep = ePGroup[PrimGroupType.lod1];
+                                    // if the prim has a script, it's a different layer
                                     if (0 != (int)ep.SOP.ScriptEvents) {
                                         stats.numEntitiesWithScripts++;
                                     }
+                                    int numFaces = ep.facetedMesh.Faces.Count;
+                                    stats.numFaces += numFaces;
+                                    // for each face of the prim, see if it's a shared texture
                                     OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
-
+                                    for (int ii = 0; ii < numFaces; ii++) {
+                                        OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
+                                        int hashCode = 0;
+                                        OMV.UUID textureID;
+                                        if (tef != null) {
+                                            hashCode = tef.GetHashCode();
+                                            textureID = tef.TextureID;
+                                        }
+                                        else {
+                                            stats.numNullTexturedFaces++;
+                                            hashCode = tex.DefaultTexture.GetHashCode();
+                                            textureID = tex.DefaultTexture.TextureID;
+                                        }
+                                        if (textureCount.ContainsKey(hashCode)) {
+                                            textureCount[hashCode]++;
+                                        }
+                                        else {
+                                            textureCount.Add(hashCode, 1);
+                                        }
+                                        // Count each of the unique textures
+                                        if (!textureIDs.Contains(textureID)) {
+                                            textureIDs.Add(textureID);
+                                        }
+                                    }
+                                }
+                                else {
+                                    m_log.ErrorFormat("{0} Prim didn't have primary mesh. ID={1}", LogHeader, eGroup.SOG.UUID);
                                 }
                             });
                         });
+
+                        // All stats are gathered.
+                        // Now bucket all the prims into static/non-static
+                        allSOGs.ForEach(eGroup => {
+                            // For each prim in the entity
+                            eGroup.ForEach(ePGroup => {
+                                // only check for the primary mesh
+                                if (ePGroup.ContainsKey(PrimGroupType.lod1)) {
+                                    ExtendedPrim ep = ePGroup[PrimGroupType.lod1];
+                                    // if the prim has a script, it's a different layer
+                                    if (0 != (int)ep.SOP.ScriptEvents) {
+                                        // if any of the prims in a linkset have a script, the whole entity is not static
+                                        scriptedEntities.AddUniqueEntity(eGroup);
+                                    }
+                                    else {
+                                        // the prim is not scripted so we add all its faces to the static group
+                                        staticEntities.AddUniqueEntity(eGroup);
+                                    }
+                                }
+                                else {
+                                    m_log.ErrorFormat("{0} Prim didn't have primary mesh. ID={1}", LogHeader, eGroup.SOG.UUID);
+                                }
+                            });
+                        });
+                        m_log.InfoFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, scriptedEntities.Count);
+                        m_log.InfoFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, staticEntities.Count);
+
+                        // Go through all the static items and make a list of all the meshes with similar textures
+                        staticEntities.ForEach(eGroup => {
+                            eGroup.ForEach(ePGroup => {
+                                ExtendedPrim ep = ePGroup[PrimGroupType.lod1];
+
+                                int numFaces = ep.facetedMesh.Faces.Count;
+                                // for each face of the prim, see if it's a shared texture
+                                OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
+                                for (int ii = 0; ii < numFaces; ii++) {
+                                    OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
+                                    int hashCode = 0;
+                                    if (tef != null) {
+                                        hashCode = tef.GetHashCode();
+                                    }
+                                    else {
+                                        hashCode = tex.DefaultTexture.GetHashCode();
+                                    }
+                                    similarFaces.AddSimilarFace(hashCode, new FaceSelection(ep, ii));
+                                }
+                            });
+                        });
+                        m_log.InfoFormat("{0} {1} CHECK num similar faces={2}", LogHeader, m_scene.Name, similarFaces.Count);
+
                     }
 
                     m_log.InfoFormat("{0} ", LogHeader);
@@ -174,6 +288,11 @@ namespace org.herbal3d.BasilOS {
                     m_log.InfoFormat("{0} {1} numEntities={2}", LogHeader, m_scene.Name, stats.numEntities);
                     m_log.InfoFormat("{0} {1} numLinksets={2}", LogHeader, m_scene.Name, stats.numLinksets);
                     m_log.InfoFormat("{0} {1} numEntitiesWithScripts={2}", LogHeader, m_scene.Name, stats.numEntitiesWithScripts);
+                    m_log.InfoFormat("{0} {1} numFaces={2}", LogHeader, m_scene.Name, stats.numFaces);
+                    m_log.InfoFormat("{0} {1} num faces with unique textures={2}", LogHeader, m_scene.Name, textureCount.Count);
+                    m_log.InfoFormat("{0} {1} num null textured faces={2}", LogHeader, m_scene.Name, stats.numNullTexturedFaces);
+                    m_log.InfoFormat("{0} {1} num unique texture IDs={2}", LogHeader, m_scene.Name, textureIDs.Count);
+
                 }
             }
         }
@@ -181,10 +300,10 @@ namespace org.herbal3d.BasilOS {
         // Convert all prims in SOG into meshes and return the mesh group.
         private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
                         IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
-            m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
+            // m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
             var prom = new Promise<EntityGroup>();
 
-            EntityGroup meshes = new EntityGroup();
+            EntityGroup meshes = new EntityGroup(sog);
 
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
@@ -192,8 +311,7 @@ namespace org.herbal3d.BasilOS {
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Then(ePrimGroup => {
                         lock (meshes) {
-                            m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}",
-                                        LogHeader, sop.UUID);
+                            // m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}", LogHeader, sop.UUID);
                             meshes.Add(ePrimGroup);
                         }
                         // can't tell what order the prims are completed in so wait until they are all meshed

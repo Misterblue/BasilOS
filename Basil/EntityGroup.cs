@@ -67,7 +67,22 @@ namespace org.herbal3d.BasilOS {
 
     // some entities are made of multiple prims (linksets)
     public class EntityGroup : List<ExtendedPrimGroup> {
-        public EntityGroup() : base() {
+        public SceneObjectGroup SOG;
+        public EntityGroup(SceneObjectGroup pSOG) : base() {
+            SOG = pSOG;
+        }
+    }
+
+    // list of entities that have scripts... can safely add and entity multiple times
+    public class EntityGroupList : List<EntityGroup> {
+        public EntityGroupList() : base() {
+        }
+
+        // Add the entity group to the list if it is not alreayd in the list
+        public void AddUniqueEntity(EntityGroup added) {
+            if (!base.Contains(added)) {
+                base.Add(added);
+            }
         }
     }
 }
