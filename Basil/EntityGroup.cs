@@ -73,7 +73,7 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
-    // list of entities that have scripts... can safely add and entity multiple times
+    // list of entities ... can safely add and entity multiple times
     public class EntityGroupList : List<EntityGroup> {
         public EntityGroupList() : base() {
         }

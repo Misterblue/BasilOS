@@ -62,9 +62,7 @@ namespace org.herbal3d.BasilOS {
             // Overlay the default parameter values with the settings in the INI file
             m_sysConfig = source.Configs["Basil"];
             if (m_sysConfig != null) {
-                m_log.DebugFormat("{0} before calling SetParameterConfigurationValues", LogHeader);
                 m_params.SetParameterConfigurationValues(m_sysConfig);
-                m_log.DebugFormat("{0} after calling SetParameterConfigurationValues", LogHeader);
             }
 
             if (m_params.Enabled) {
@@ -138,9 +136,10 @@ namespace org.herbal3d.BasilOS {
 
         // A structure to hold all the information about the reorganized scene
         private class ReorganizedScene {
-            public EntityGroupList scriptedEntities = new EntityGroupList();
+            public EntityGroupList nonStaticEntities = new EntityGroupList();
             public EntityGroupList staticEntities = new EntityGroupList();
             public SimilarFaces similarFaces = new SimilarFaces();
+            public EntityGroupList rebuiltFaceEntities = new EntityGroupList();
 
             public ReorganizedScene() {
             }
@@ -172,60 +171,29 @@ namespace org.herbal3d.BasilOS {
                         m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
 
                         // Scan all the entities and extract statistics
-                        ExtractStatistics(allSOGs, stats);
-                        m_log.InfoFormat("{0} ", LogHeader);
-                        m_log.InfoFormat("{0} {1} numPrims={2}", LogHeader, m_scene.Name, stats.numPrims);
-                        m_log.InfoFormat("{0} {1} numSculpties={2}", LogHeader, m_scene.Name, stats.numSculpties);
-                        m_log.InfoFormat("{0} {1} numMeshes={2}", LogHeader, m_scene.Name, stats.numMeshes);
-                        m_log.InfoFormat("{0} {1} numEntities={2}", LogHeader, m_scene.Name, stats.numEntities);
-                        m_log.InfoFormat("{0} {1} numLinksets={2}", LogHeader, m_scene.Name, stats.numLinksets);
-                        m_log.InfoFormat("{0} {1} numEntitiesWithScripts={2}", LogHeader, m_scene.Name, stats.numEntitiesWithScripts);
-                        m_log.InfoFormat("{0} {1} numFaces={2}", LogHeader, m_scene.Name, stats.numFaces);
-                        m_log.InfoFormat("{0} {1} num faces with unique textures={2}", LogHeader, m_scene.Name, stats.textureCount.Count);
-                        m_log.InfoFormat("{0} {1} num null textured faces={2}", LogHeader, m_scene.Name, stats.numNullTexturedFaces);
-                        m_log.InfoFormat("{0} {1} num unique texture IDs={2}", LogHeader, m_scene.Name, stats.textureIDs.Count);
+                        if (m_params.LogConversionStats) {
+                            ExtractStatistics(allSOGs, stats);
+                        }
 
                         // Scan the entities and reorganize into static/non-static and find shared face meshes
                         ReorganizeScene(allSOGs, reorgScene);
 
                         // print out information about the similar faces
-                        int totalIndices = 0;
-                        int totalVertices = 0;
-                        int totalUniqueVertices = 0;
-                        foreach (int key in reorgScene.similarFaces.Keys) {
-                            // Go through the list of faces that have the same texture
-                            int totalIndicesPerUnique = 0;
-                            int totalVerticesPerUnique = 0;
-                            List<OMVR.Vertex> uniqueVertices = new List<OMVR.Vertex>();
-
-                            List<FaceSelection> similar = reorgScene.similarFaces[key];
-                            similar.ForEach(oneSimilarFace => {
-                                ExtendedPrim ep = oneSimilarFace.containingPrim;
-                                int ii = oneSimilarFace.faceIndex;
-                                OMVR.Face oneFace = ep.facetedMesh.Faces[ii];
-                                int indicesForFace = oneFace.Indices.Count;
-                                totalIndicesPerUnique += indicesForFace;
-                                int verticesForFace = oneFace.Vertices.Count;
-                                totalVerticesPerUnique += verticesForFace;
-                                oneFace.Vertices.ForEach(v => {
-                                    if (!uniqueVertices.Contains(v)) {
-                                        uniqueVertices.Add(v);
-                                    }
-                                });
-                            });
-                            totalVertices += totalVerticesPerUnique;
-                            totalIndices += totalIndicesPerUnique;
-                            totalUniqueVertices += uniqueVertices.Count;
-                            m_log.InfoFormat("{0} {1} {2}: totalIndices={3}, totalVertices={4}, uniqueVertices={5}",
-                                        LogHeader, m_scene.Name, key, totalIndicesPerUnique, totalVerticesPerUnique, uniqueVertices.Count);
+                        if (m_params.LodDetailedSharedFaceStats) {
+                            LogSharedFaceInformation(reorgScene);
                         }
-                        m_log.InfoFormat("{0} {1} totalIndices={2}, totalVertices={3}, uniqueVertices={4}",
-                                    LogHeader, m_scene.Name, totalIndices, totalVertices, totalUniqueVertices);
+
+                        // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
+                        //     by repositioning the vertices in the shared meshes so they act as one mesh
+                        ConvertSharedFacesIntoMeshes(reorgScene);
+
+                        // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
+
+                        // Build the GLTF structures from the reorganized scene
+
 
 
                     }
-
-
                 }
             }
         }
@@ -299,6 +267,17 @@ namespace org.herbal3d.BasilOS {
                     }
                 });
             });
+            m_log.InfoFormat("{0} ", LogHeader);
+            m_log.InfoFormat("{0} {1} numPrims={2}", LogHeader, m_scene.Name, stats.numPrims);
+            m_log.InfoFormat("{0} {1} numSculpties={2}", LogHeader, m_scene.Name, stats.numSculpties);
+            m_log.InfoFormat("{0} {1} numMeshes={2}", LogHeader, m_scene.Name, stats.numMeshes);
+            m_log.InfoFormat("{0} {1} numEntities={2}", LogHeader, m_scene.Name, stats.numEntities);
+            m_log.InfoFormat("{0} {1} numLinksets={2}", LogHeader, m_scene.Name, stats.numLinksets);
+            m_log.InfoFormat("{0} {1} numEntitiesWithScripts={2}", LogHeader, m_scene.Name, stats.numEntitiesWithScripts);
+            m_log.InfoFormat("{0} {1} numFaces={2}", LogHeader, m_scene.Name, stats.numFaces);
+            m_log.InfoFormat("{0} {1} num faces with unique textures={2}", LogHeader, m_scene.Name, stats.textureCount.Count);
+            m_log.InfoFormat("{0} {1} num null textured faces={2}", LogHeader, m_scene.Name, stats.numNullTexturedFaces);
+            m_log.InfoFormat("{0} {1} num unique texture IDs={2}", LogHeader, m_scene.Name, stats.textureIDs.Count);
         }
 
         // Pass over all the converted entities and sort into types of meshes.
@@ -314,7 +293,7 @@ namespace org.herbal3d.BasilOS {
                         // if the prim has a script, it's a different layer
                         if (0 != (int)ep.SOP.ScriptEvents) {
                             // if any of the prims in a linkset have a script, the whole entity is not static
-                            reorgScene.scriptedEntities.AddUniqueEntity(eGroup);
+                            reorgScene.nonStaticEntities.AddUniqueEntity(eGroup);
                         }
                         else {
                             // the prim is not scripted so we add all its faces to the static group
@@ -326,7 +305,7 @@ namespace org.herbal3d.BasilOS {
                     }
                 });
             });
-            m_log.DebugFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, reorgScene.scriptedEntities.Count);
+            m_log.DebugFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
             m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
 
             // Go through all the static items and make a list of all the meshes with similar textures
@@ -353,6 +332,86 @@ namespace org.herbal3d.BasilOS {
             m_log.InfoFormat("{0} {1} CHECK num similar faces={2}", LogHeader, m_scene.Name, reorgScene.similarFaces.Count);
         }
 
+        private void LogSharedFaceInformation(ReorganizedScene reorgScene) {
+            int totalIndices = 0;
+            int totalVertices = 0;
+            int totalUniqueVertices = 0;
+            foreach (int key in reorgScene.similarFaces.Keys) {
+                // Go through the list of faces that have the same texture
+                int totalIndicesPerUnique = 0;
+                int totalVerticesPerUnique = 0;
+                List<OMVR.Vertex> uniqueVertices = new List<OMVR.Vertex>();
+
+                List<FaceSelection> similar = reorgScene.similarFaces[key];
+                similar.ForEach(oneSimilarFace => {
+                    ExtendedPrim ep = oneSimilarFace.containingPrim;
+                    int ii = oneSimilarFace.faceIndex;
+                    OMVR.Face oneFace = ep.facetedMesh.Faces[ii];
+                    int indicesForFace = oneFace.Indices.Count;
+                    totalIndicesPerUnique += indicesForFace;
+                    int verticesForFace = oneFace.Vertices.Count;
+                    totalVerticesPerUnique += verticesForFace;
+                    oneFace.Vertices.ForEach(v => {
+                        if (!uniqueVertices.Contains(v)) {
+                            uniqueVertices.Add(v);
+                        }
+                    });
+                });
+                totalVertices += totalVerticesPerUnique;
+                totalIndices += totalIndicesPerUnique;
+                totalUniqueVertices += uniqueVertices.Count;
+                m_log.InfoFormat("{0} {1} {2}: totalIndices={3}, totalVertices={4}, uniqueVertices={5}",
+                            LogHeader, m_scene.Name, key, totalIndicesPerUnique, totalVerticesPerUnique, uniqueVertices.Count);
+            }
+            m_log.InfoFormat("{0} {1} totalIndices={2}, totalVertices={3}, uniqueVertices={4}",
+                        LogHeader, m_scene.Name, totalIndices, totalVertices, totalUniqueVertices);
+        }
+
+        // Loop through all the shared faces (faces that share the same material) and create
+        //    one mesh for all the faces. This entails selecting one of the faces to be the
+        //    root face and then displacing all the vertices, rotations, ... to be based
+        //    from that root face.
+        // We find the root face by looking for one "in the middle"ish so as to keep the offset
+        //    math as small as possible.
+        // This creates reorgScene.rebuildFaceEntities from reorgScene.similarFaces.
+        private void ConvertSharedFacesIntoMeshes(ReorganizedScene reorgScene) {
+            foreach (int key in reorgScene.similarFaces.Keys) {
+                // This is the list of faces that use one particular face material
+                List<FaceSelection> similar = reorgScene.similarFaces[key];
+
+                // Loop through the faces and find the 'middle one'
+                FaceSelection rootFace = null;
+                // similar.ForEach(oneSimilarFace => {
+                // });
+                // for the moment, just select the first one.
+                // If coordinate jitter becomes a problem, fix this code to find the middle one.
+                rootFace = similar[0];
+
+                ExtendedPrim newEp = new ExtendedPrim();    // the new object being created
+                OMVR.FacetedMesh newFacetedMesh= new OMVR.FacetedMesh();  // the new mesh
+                OMVR.Face newFace = new OMVR.Face();  // the new mesh
+                similar.ForEach(oneSimilarFace => {
+                    ExtendedPrim ep = oneSimilarFace.containingPrim;
+                    if (oneSimilarFace == rootFace) {
+                        // The root entity becomes the identity of the whole thing
+                        newEp.SOG = ep.SOG;
+                        newEp.SOP = ep.SOP;
+                        newEp.primitive = ep.primitive;
+                        newFace.TextureFace = ep.primitive.Textures.CreateFace((uint)oneSimilarFace.faceIndex);
+                    }
+                    if (ep.SOP.ParentID != 0) {
+                        // if the prim for this face is part of a linkset, its position must be rotated from the base
+                    }
+                    else {
+                        // If just a prim in space, offset coords to be relative to the root face
+                    }
+                });
+                reorgScene.rebuiltFaceEntities.AddUniqueEntity(newEp);
+
+                // Based of the root face, create a new mesh that holds all the faces
+            }
+        }
+
         // Convert all prims in SOG into meshes and return the mesh group.
         private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
                         IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
@@ -361,6 +420,7 @@ namespace org.herbal3d.BasilOS {
 
             EntityGroup meshes = new EntityGroup(sog);
 
+            // TODO: change this completion logic to use Promise.All()
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
