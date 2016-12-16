@@ -206,6 +206,7 @@ namespace org.herbal3d.BasilOS {
         private void ConvertEntitiesToMeshes(List<EntityGroup> allSOGs, IAssetFetcherWrapper assetFetcher, BasilStats stats) {
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
+                // TODO: This should be a Promise.All()
                 m_scene.ForEachSOG(sog => {
                     ConvertSOG(sog, assetMesher, assetFetcher, stats)
                         .Then(ePrimGroup => {
@@ -315,7 +316,7 @@ namespace org.herbal3d.BasilOS {
             // Go through all the static items and make a list of all the meshes with similar textures
             reorgScene.staticEntities.ForEach(eGroup => {
                 eGroup.ForEach(ePGroup => {
-                    ExtendedPrim ep = ePGroup[PrimGroupType.lod1];
+                    ExtendedPrim ep = ePGroup[PrimGroupType.lod1];  // the interesting one is the high rez one
 
                     int numFaces = ep.facetedMesh.Faces.Count;
                     // for each face of the prim, see if it's a shared texture
@@ -336,6 +337,7 @@ namespace org.herbal3d.BasilOS {
             m_log.InfoFormat("{0} {1} CHECK num similar faces={2}", LogHeader, m_scene.Name, reorgScene.similarFaces.Count);
         }
 
+        // Log stats for each of the shared faces.
         private void LogSharedFaceInformation(ReorganizedScene reorgScene) {
             int totalIndices = 0;
             int totalVertices = 0;
@@ -379,6 +381,47 @@ namespace org.herbal3d.BasilOS {
         //    math as small as possible.
         // This creates reorgScene.rebuildFaceEntities from reorgScene.similarFaces.
         private void ConvertSharedFacesIntoMeshes(ReorganizedScene reorgScene) {
+            /*
+            reorgScene.rebuiltFaceEntities = (EntityGroupList)reorgScene.similarFaces.Keys.SelectMany<int, EntityGroup>(key => {
+                // This is the list of faces that use one particular face material
+                List<FaceSelection> similar = reorgScene.similarFaces[key];
+
+                // Loop through the faces and find the 'middle one'
+                FaceSelection rootFace = null;
+                // similar.ForEach(oneSimilarFace => {
+                // });
+                // for the moment, just select the first one.
+                // If coordinate jitter becomes a problem, fix this code to find the middle one.
+                rootFace = similar[0];
+
+                ExtendedPrim newEp = new ExtendedPrim();    // the new object being created
+                OMVR.FacetedMesh newFacetedMesh= new OMVR.FacetedMesh();  // the new mesh
+                OMVR.Face newFace = new OMVR.Face();  // the new mesh
+                // Based of the root face, create a new mesh that holds all the faces
+                similar.ForEach(oneSimilarFace => {
+                    ExtendedPrim ep = oneSimilarFace.containingPrim;
+                    if (oneSimilarFace == rootFace) {
+                        // The root entity becomes the identity of the whole thing
+                        newEp.SOG = ep.SOG;
+                        newEp.SOP = ep.SOP;
+                        newEp.primitive = ep.primitive;
+                        newFace.TextureFace = ep.primitive.Textures.CreateFace((uint)oneSimilarFace.faceIndex);
+                    }
+                    if (ep.SOP.ParentID != 0) {
+                        // if the prim for this face is part of a linkset, its position must be rotated from the base
+                        // TODO:
+                    }
+                    else {
+                        // If just a prim in space, offset coords to be relative to the root face
+                        // TODO:
+                    }
+                });
+                EntityGroup eg = new EntityGroup(newEp.SOG);
+                eg.Add(new ExtendedPrimGroup(newEp));
+                return eg;
+            });
+            */
+
             foreach (int key in reorgScene.similarFaces.Keys) {
                 // This is the list of faces that use one particular face material
                 List<FaceSelection> similar = reorgScene.similarFaces[key];
@@ -479,28 +522,40 @@ namespace org.herbal3d.BasilOS {
 
             // For each of the entities, create a gltfNode for the root and then add the linkset prims as the children
             reorgScene.nonStaticEntities.ForEach(eg => {
-
-                // Find the root prim of this linkset
-                ExtendedPrim rootPrim = null;
-                eg.ForEach(epg => {
-                    ExtendedPrim ep = epg[PrimGroupType.lod1];
-                    if (ep.SOP.IsRoot) {
-                        rootPrim = ep;
-                    }
-                });
-                GltfNode gRootNode = GltfNodeFromExtendedPrim(gltf, rootPrim);
-
-                eg.ForEach(epg => {
-                    ExtendedPrim ep = epg[PrimGroupType.lod1];
-                    if (!ep.SOP.IsRoot) {
-                        GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, ep);
-                        gRootNode.children.Add(gChildNode);
-                    }
-                });
+                AddNodeToGltf(gltf, eg);
             });
+
+            // The rebuilt static entities are added next
+            reorgScene.rebuiltFaceEntities.ForEach(eg => {
+                AddNodeToGltf(gltf, eg);
+            });
+
+            // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
+            gltf.BuildBuffers();
+            
 
             Console.Write(gltf.toJSON());
             return;
+        }
+
+        private void AddNodeToGltf(Gltf gltf, EntityGroup eg) {
+            // Find the root prim of this linkset
+            ExtendedPrim rootPrim = null;
+            eg.ForEach(epg => {
+                ExtendedPrim ep = epg[PrimGroupType.lod1];
+                if (ep.SOP.IsRoot) {
+                    rootPrim = ep;
+                }
+            });
+            GltfNode gRootNode = GltfNodeFromExtendedPrim(gltf, rootPrim);
+
+            eg.ForEach(epg => {
+                ExtendedPrim ep = epg[PrimGroupType.lod1];
+                if (!ep.SOP.IsRoot) {
+                    GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, ep);
+                    gRootNode.children.Add(gChildNode);
+                }
+            });
         }
 
         private GltfNode GltfNodeFromExtendedPrim(Gltf pGltf, ExtendedPrim ep) {
@@ -516,12 +571,24 @@ namespace org.herbal3d.BasilOS {
 
             ret.name = ep.SOP.Name;
 
-            OMV.Vector3 pos = ep.SOP.GetWorldPosition();
-            ret.translation = new GltfVector3(pos.X, pos.Y, pos.Z);
-            OMV.Quaternion rot = ep.SOP.GetWorldRotation();
-            ret.rotation = new GltfVector4(rot.X, rot.Y, rot.Z, rot.W);
+            if (ep.SOP.IsRoot) {
+                OMV.Vector3 pos = ep.SOP.GetWorldPosition();
+                ret.translation = new GltfVector3(pos.X, pos.Y, pos.Z);
+                OMV.Quaternion rot = ep.SOP.GetWorldRotation();
+                ret.rotation = new GltfVector4(rot.X, rot.Y, rot.Z, rot.W);
+            }
+            else {
+                OMV.Vector3 pos = ep.SOP.RelativePosition;
+                ret.translation = new GltfVector3(pos.X, pos.Y, pos.Z);
+                OMV.Quaternion rot = ep.SOP.RotationOffset;
+                ret.rotation = new GltfVector4(rot.X, rot.Y, rot.Z, rot.W);
+            }
 
             ep.facetedMesh.Faces.ForEach(face => {
+                string meshID = "mesh_" + ep.SOP.UUID.ToString();
+                GltfMesh mesh = new GltfMesh(pGltf, meshID);
+                mesh.underlyingMesh = face;
+                ret.meshes.Add(mesh);
             });
 
             return ret;

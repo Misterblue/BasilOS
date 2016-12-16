@@ -129,6 +129,12 @@ namespace org.herbal3d.BasilOS {
             buffers = new GltfBuffers(this);
         }
 
+        // Meshes with OMVR.Faces have been added to the scene. Pass over all
+        //   the meshes and create the Buffers, BufferViews, and Accessors.
+        // Called before calling toJSON().
+        public void BuildBuffers() {
+        }
+
         public override string toJSON() {
             StringBuilder buff = new StringBuilder();
             buff.Append("{");
@@ -273,7 +279,7 @@ namespace org.herbal3d.BasilOS {
     }
 
     public class GltfMesh : GltfClass {
-        public OMVR.FacetedMesh underlyingMesh;
+        public OMVR.Face underlyingMesh;
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.meshes.Add(this);
         }
