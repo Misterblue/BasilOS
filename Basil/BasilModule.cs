@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Mono.Addins;
 
@@ -136,12 +137,14 @@ namespace org.herbal3d.BasilOS {
 
         // A structure to hold all the information about the reorganized scene
         private class ReorganizedScene {
+            public string regionID;
             public EntityGroupList nonStaticEntities = new EntityGroupList();
             public EntityGroupList staticEntities = new EntityGroupList();
             public SimilarFaces similarFaces = new SimilarFaces();
             public EntityGroupList rebuiltFaceEntities = new EntityGroupList();
 
-            public ReorganizedScene() {
+            public ReorganizedScene(string pRegionID) {
+                regionID = pRegionID;
             }
         }
 
@@ -160,7 +163,7 @@ namespace org.herbal3d.BasilOS {
             if (SceneManager.Instance.CurrentScene.Name == m_scene.Name) {
 
                 List<EntityGroup> allSOGs = new List<EntityGroup>();
-                ReorganizedScene reorgScene = new ReorganizedScene();
+                ReorganizedScene reorgScene = new ReorganizedScene("region_" +m_scene.Name.ToLower());
 
                 using (BasilStats stats = new BasilStats(m_scene, m_log)) {
 
@@ -189,10 +192,11 @@ namespace org.herbal3d.BasilOS {
 
                         // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
 
+                        // Scan through all the textures and convert them into PNGs for the Gltf scene
+                        ExportTexturesForGltf(reorgScene, m_params.GltfTargetDir);
+
                         // Build the GLTF structures from the reorganized scene
-
-
-
+                        ExportSceneAsGltf(reorgScene, m_params.GltfTargetDir);
                     }
                 }
             }
@@ -390,6 +394,7 @@ namespace org.herbal3d.BasilOS {
                 ExtendedPrim newEp = new ExtendedPrim();    // the new object being created
                 OMVR.FacetedMesh newFacetedMesh= new OMVR.FacetedMesh();  // the new mesh
                 OMVR.Face newFace = new OMVR.Face();  // the new mesh
+                // Based of the root face, create a new mesh that holds all the faces
                 similar.ForEach(oneSimilarFace => {
                     ExtendedPrim ep = oneSimilarFace.containingPrim;
                     if (oneSimilarFace == rootFace) {
@@ -401,14 +406,16 @@ namespace org.herbal3d.BasilOS {
                     }
                     if (ep.SOP.ParentID != 0) {
                         // if the prim for this face is part of a linkset, its position must be rotated from the base
+                        // TODO:
                     }
                     else {
                         // If just a prim in space, offset coords to be relative to the root face
+                        // TODO:
                     }
                 });
-                reorgScene.rebuiltFaceEntities.AddUniqueEntity(newEp);
-
-                // Based of the root face, create a new mesh that holds all the faces
+                EntityGroup eg = new EntityGroup(newEp.SOG);
+                eg.Add(new ExtendedPrimGroup(newEp));
+                reorgScene.rebuiltFaceEntities.AddUniqueEntity(eg);
             }
         }
 
@@ -420,9 +427,26 @@ namespace org.herbal3d.BasilOS {
 
             EntityGroup meshes = new EntityGroup(sog);
 
-            // TODO: change this completion logic to use Promise.All()
+            /* TODO: change the completion logic to use Promise.All()
+            // This commented out code block is close but the types don't work out
+            meshes = Promise.All(sog.Parts.SelectMany<SceneObjectPart, IPromise<ExtendedPrimGroup>>(sop => {
+                OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
+                return mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
+                    .Then(ePrimGroup => {
+                        EntityGroup eg = new EntityGroup(sog);
+                        eg.Add(ePrimGroup);
+                        prom.Resolve(eg);
+                    })
+                    .Catch(e => {
+                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
+                        prom.Reject(e);
+                    });
+            }) );
+            */
+
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
+
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Then(ePrimGroup => {
@@ -441,6 +465,66 @@ namespace org.herbal3d.BasilOS {
                     });
             }
             return prom;
+        }
+
+        private void ExportTexturesForGltf(ReorganizedScene reorgScene, string targetDir) {
+            return;
+        }
+
+        // Build the GLTF structures from the reorganized scene
+        private void ExportSceneAsGltf(ReorganizedScene reorgScene, string targetDir) {
+            Gltf gltf = new Gltf();
+
+            GltfScene gScene = new GltfScene(gltf, reorgScene.regionID);
+
+            // For each of the entities, create a gltfNode for the root and then add the linkset prims as the children
+            reorgScene.nonStaticEntities.ForEach(eg => {
+
+                // Find the root prim of this linkset
+                ExtendedPrim rootPrim = null;
+                eg.ForEach(epg => {
+                    ExtendedPrim ep = epg[PrimGroupType.lod1];
+                    if (ep.SOP.IsRoot) {
+                        rootPrim = ep;
+                    }
+                });
+                GltfNode gRootNode = GltfNodeFromExtendedPrim(gltf, rootPrim);
+
+                eg.ForEach(epg => {
+                    ExtendedPrim ep = epg[PrimGroupType.lod1];
+                    if (!ep.SOP.IsRoot) {
+                        GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, ep);
+                        gRootNode.children.Add(gChildNode);
+                    }
+                });
+            });
+
+            Console.Write(gltf.toJSON());
+            return;
+        }
+
+        private GltfNode GltfNodeFromExtendedPrim(Gltf pGltf, ExtendedPrim ep) {
+            string id = ep.SOG.LocalId.ToString();
+            if (ep.SOP.IsRoot) {
+                id += "_root_";
+            }
+            else {
+                id += "_part" + ep.SOP.LinkNum.ToString() + "_";
+            }
+            id += ep.SOP.UUID.ToString();
+            GltfNode ret = new GltfNode(pGltf, id);
+
+            ret.name = ep.SOP.Name;
+
+            OMV.Vector3 pos = ep.SOP.GetWorldPosition();
+            ret.translation = new GltfVector3(pos.X, pos.Y, pos.Z);
+            OMV.Quaternion rot = ep.SOP.GetWorldRotation();
+            ret.rotation = new GltfVector4(rot.X, rot.Y, rot.Z, rot.W);
+
+            ep.facetedMesh.Faces.ForEach(face => {
+            });
+
+            return ret;
         }
     }
 }

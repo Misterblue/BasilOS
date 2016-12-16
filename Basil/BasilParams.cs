@@ -37,6 +37,8 @@ namespace org.herbal3d.BasilOS {
         public string AssetDirectory;   // root directory of asset storage
         public int WebSocketPort;       // port to open WebSocket listener
 
+        public string GltfTargetDir;    // where to store all the Gltf files
+
         public bool LogConversionStats; // output numbers about number of entities converted
         public bool LodDetailedSharedFaceStats; // output numbers about face mesh sharing
         #pragma warning restore CS0649
@@ -69,6 +71,8 @@ namespace org.herbal3d.BasilOS {
                 "./BasilAssets" ),
             new ParameterDefn<int>("WebSocketPort", "Port for the WebSocket to listen on",
                 34343 ),
+            new ParameterDefn<string>("GltfTargetDir", "Where to store all the Gltf files",
+                "./gltf" ),
             new ParameterDefn<bool>("LogConversionStats", "output numbers about number of entities converted",
                 true ),
             new ParameterDefn<bool>("LodDetailedSharedFaceStats", "output numbers about face mesh sharing",
