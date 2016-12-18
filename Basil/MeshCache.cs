@@ -42,12 +42,16 @@ namespace org.herbal3d.BasilOS {
         }
 
         public void Add(int pMeshHash, OMVR.FacetedMesh pFMesh) {
+            m_log.DebugFormat("{0} Add. Add. hash={1}, id={2}",
+                            LogHeader, pMeshHash, pFMesh.Prim.ID.ToString());
             m_cache.Add(pMeshHash, pFMesh);
         }
 
         public OMVR.FacetedMesh GetMesh(int pFHash) {
             OMVR.FacetedMesh ret = null;
             m_cache.TryGetValue(pFHash, out ret);
+            m_log.DebugFormat("{0} Add. GetMesh. Hash={1}, id={2}",
+                            LogHeader, pFHash, ret.Prim.ID.ToString());
             return ret;
         }
     }

@@ -45,6 +45,8 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
+    /* Thought I might need my own classes for serialization.
+     * Going with the OMV vector classes.
     public class GltfVector3 : GltfClass {
         public float[] vector = new float[3];
         public float X { get { return vector[0]; } set { vector[0] = value; } }
@@ -93,6 +95,7 @@ namespace org.herbal3d.BasilOS {
             return buff.ToString();
         }
     }
+    */
 
     public class GltfVector16 : GltfClass {
         public float[] vector = new float[16];
@@ -236,19 +239,20 @@ namespace org.herbal3d.BasilOS {
         public GltfMeshes meshes;
         // has either 'matrix' or 'rotation/scale/translation'
         public GltfVector16 matrix;
-        public GltfVector4 rotation;
-        public GltfVector3 scale;
-        public GltfVector3 translation;
+        public OMV.Quaternion rotation;
+        public OMV.Vector3 scale;
+        public OMV.Vector3 translation;
         public string name;
         public string extensions;   // more JSON describing the extensions used
         public string extras;       // more JSON with additional, beyond-the-standard values
 
         public GltfNode(Gltf pRoot, string pID) : base(pRoot, pID) {
+            meshes = new GltfMeshes(gltfRoot);
             children = new GltfNodes(gltfRoot);
             matrix = null;
-            rotation = new GltfVector4(0, 0, 0, 1);
-            scale = new GltfVector3(1, 1, 1);
-            translation = new GltfVector3(0, 0, 0);
+            rotation = new OMV.Quaternion();
+            scale = new OMV.Vector3(1, 1, 1);
+            translation = new OMV.Vector3(0, 0, 0);
         }
 
         public override string toJSON() {
@@ -261,7 +265,6 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override string toJSON() {
-            // return base.toJSON("mesh", this);
             StringBuilder buff = new StringBuilder();
             buff.Append("{");
             bool first = true;

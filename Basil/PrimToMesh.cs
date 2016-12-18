@@ -38,7 +38,7 @@ namespace org.herbal3d.BasilOS {
         OMVR.MeshmerizerR m_mesher;
         private MeshCache m_meshCache;
         ILog m_log;
-        String LogHeader = "PrimToMesh:";
+        String LogHeader = "[Basil.PrimToMesh]";
 
         public PrimToMesh(ILog logger) {
             m_mesher = new OMVR.MeshmerizerR();
@@ -108,7 +108,7 @@ namespace org.herbal3d.BasilOS {
 
             ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, mesh);
 
-            // m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
+            m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
 
             ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
 
@@ -129,11 +129,11 @@ namespace org.herbal3d.BasilOS {
                     ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, fMesh);
 
                     // if (fMesh.Faces.Count == 1) {
-                    //     // m_log.DebugFormat("{0} MeshFromSculptData. verts={1}, ind={2}", LogHeader,
-                    //     //         fMesh.Faces[0].Vertices.Count, fMesh.Faces[0].Indices.Count);
+                    //     m_log.DebugFormat("{0} MeshFromSculptData. verts={1}, ind={2}", LogHeader,
+                    //             fMesh.Faces[0].Vertices.Count, fMesh.Faces[0].Indices.Count);
                     // }
                     // else {
-                    //     // m_log.DebugFormat("{0} MeshFromSculptData. faces={1}", LogHeader, fMesh.Faces.Count);
+                    //     m_log.DebugFormat("{0} MeshFromSculptData. faces={1}", LogHeader, fMesh.Faces.Count);
                     // }
 
                     ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
@@ -162,7 +162,7 @@ namespace org.herbal3d.BasilOS {
                         OMVR.FacetedMesh fMesh;
                         if (OMVR.FacetedMesh.TryDecodeFromAsset(prim, meshAsset, lod, out fMesh)) {
                             ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, fMesh);
-                            // m_log.DebugFormat("{0} MeshFromPrimMeshData: created mesh.. Faces={0}", 
+                            // m_log.DebugFormat("{0} MeshFromPrimMeshData: created mesh.. Faces={1}", 
                             //                     LogHeader, extPrim.facetedMesh.Faces.Count);
 
                             ExtendedPrimGroup eGroup = new ExtendedPrimGroup(extPrim);

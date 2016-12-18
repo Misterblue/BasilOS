@@ -17,11 +17,10 @@ namespace org.herbal3d.BasilOS {
     // All the information about the meshed piece is collected here so other mappings
     //     can happen with the returned information (creating Basil Entitities, etc)
     public class ExtendedPrim {
-        public SceneObjectGroup SOG;
-        public SceneObjectPart SOP;
-        public OMV.Primitive primitive;
-        public OMVA.PrimObject primObject;
-        public OMVR.FacetedMesh facetedMesh;
+        public SceneObjectGroup SOG { get; set; }
+        public SceneObjectPart SOP { get; set; }
+        public OMV.Primitive primitive { get; set; }
+        public OMVR.FacetedMesh facetedMesh { get; set; }
 
         public ExtendedPrim() {
         }
@@ -67,7 +66,7 @@ namespace org.herbal3d.BasilOS {
 
     // some entities are made of multiple prims (linksets)
     public class EntityGroup : List<ExtendedPrimGroup> {
-        public SceneObjectGroup SOG;
+        public SceneObjectGroup SOG { get; protected set;  }
         public EntityGroup(SceneObjectGroup pSOG) : base() {
             SOG = pSOG;
         }
