@@ -33,6 +33,7 @@ using OMV = OpenMetaverse;
 using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
+using System.IO;
 
 namespace org.herbal3d.BasilOS {
 
@@ -198,7 +199,7 @@ namespace org.herbal3d.BasilOS {
                         Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
 
                         // Write out the Gltf information
-                        ExportSceneAsGltf(gltf, m_params.GltfTargetDir);
+                        ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
                     }
                 }
             }
@@ -564,8 +565,62 @@ namespace org.herbal3d.BasilOS {
             return ret;
         }
 
-        private void ExportSceneAsGltf(Gltf gltf, string targetDir) {
-            Console.Write(gltf.toJSON());
+        /// <summary>
+        /// Write out the Gltf as one JSON file into the specified directory.
+        /// </summary>
+        /// <param name="gltf">A built GLTF scene</param>
+        /// <param name="regionName">The base name to use for the .gltf file</param>
+        /// <param name="pTargetDir">Directory to write the .gltf file into.
+        ///              Created if it does not exist</param>
+        private void ExportSceneAsGltf(Gltf gltf, string regionName, string pTargetDir) {
+            string targetDir = ResolveAndCreateDir(pTargetDir);
+
+            if (targetDir != null) {
+                string gltfFilename = JoinFilePieces(targetDir, regionName + ".gltf");
+                File.WriteAllText(gltfFilename, gltf.toJSON());
+            }
         }
+
+        /// <summary>
+        /// Turn the passed relative path name into an absolute directory path and
+        /// create the directory if it does not exist.
+        /// </summary>
+        /// <param name="pDir">Absolute or relative path to a directory</param>
+        /// <returns>Absolute path to directory or 'null' if cannot resolve or create the directory</returns>
+        private string ResolveAndCreateDir(string pDir) {
+            string absDir = null;
+            try {
+                absDir = Path.GetFullPath(pDir);
+                if (!Directory.Exists(absDir)) {
+                    Directory.CreateDirectory(absDir);
+                }
+            }
+            catch (Exception e) {
+                m_log.ErrorFormat("{0} Failed creation of GLTF file directory. dir={1}, e: {2}",
+                            LogHeader, absDir, e);
+                return null;
+            }
+            return absDir;
+        }
+
+        /// <summary>
+        /// Combine two filename pieces so there is one directory separator between.
+        /// This replaces System.IO.Path.Combine which has the nasty feature that it
+        /// ignores the first string if the second begins with a separator.
+        /// It assumes that it's root and you don't want to join. Wish they had asked me.
+        /// </summary>
+        /// <param name="first"></param>
+        /// <param name="last"></param>
+        /// <returns></returns>
+        public static string JoinFilePieces(string first, string last) {
+            // string separator = "" + Path.DirectorySeparatorChar;
+            string separator = "/";     // both .NET and mono are happy with forward slash
+            string f = first;
+            string l = last;
+            while (f.EndsWith(separator)) f = f.Substring(f.Length - 1);
+            while (l.StartsWith(separator)) l = l.Substring(1, l.Length - 1);
+            return f + separator + l;
+        }
+
     }
 }
