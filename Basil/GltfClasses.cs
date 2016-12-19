@@ -177,22 +177,37 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
+    // =============================================================
     public class Gltf : GltfClass {
         public string defaultSceneID;   // ID of default scene
         public GltfScenes scenes;       // scenes that make up this package
         public GltfNodes nodes;         // nodes in the scenes
         public GltfMeshes meshes;       // the meshes for the nodes
+        public GltfMaterials materials; // materials that make up the meshes
         public GltfAccessors accessors; // access to the mesh bin data
         public GltfBufferViews bufferViews; //
         public GltfBuffers buffers; //
+        public GltfTechniques techniques;
+        public GltfPrograms programs;
+        public GltfShaders shaders;
+        public GltfTextures textures;
+        public GltfImages images;
+        public GltfSamplers samplers;
 
         public Gltf() : base() {
             scenes = new GltfScenes(this);
             nodes = new GltfNodes(this);
             meshes = new GltfMeshes(this);
+            materials = new GltfMaterials(this);
             accessors = new GltfAccessors(this);
             bufferViews = new GltfBufferViews(this);
             buffers = new GltfBuffers(this);
+            techniques = new GltfTechniques(this);
+            programs = new GltfPrograms(this);
+            shaders = new GltfShaders(this);
+            textures = new GltfTextures(this);
+            images = new GltfImages(this);
+            samplers = new GltfSamplers(this);
         }
 
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
@@ -217,18 +232,44 @@ namespace org.herbal3d.BasilOS {
             meshes.ToJSON(outt);
             outt.Write(",\n");
 
+            materials.ToJSON(outt);
+            outt.Write(",\n");
+
             accessors.ToJSON(outt);
             outt.Write(",\n");
 
             bufferViews.ToJSON(outt);
             outt.Write(",\n");
 
+            if (materials.Count > 0) {
+                materials.ToJSON(outt);
+                outt.Write(",\n");
+            }
+
+            if (techniques.Count > 0) {
+                techniques.ToJSON(outt);
+                outt.Write(",\n");
+            }
+
+            if (programs.Count > 0) {
+                programs.ToJSON(outt);
+                outt.Write(",\n");
+            }
+
+            if (shaders.Count > 0) {
+                shaders.ToJSON(outt);
+                outt.Write(",\n");
+            }
+
+            // there will always be a buffer and there doesn't need to be a comma after
             buffers.ToJSON(outt);
+            outt.Write("\n");
 
             outt.Write("}\n");
         }
     }
 
+    // =============================================================
     public class GltfScenes : GltfListClass<GltfScene> {
         public GltfScenes(Gltf pRoot) : base(pRoot) {
         }
@@ -265,6 +306,7 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
+    // =============================================================
     public class GltfNodes : GltfListClass<GltfNode> {
         public GltfNodes(Gltf pRoot) : base(pRoot) {
         }
@@ -337,6 +379,7 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
+    // =============================================================
     public class GltfMeshes : GltfListClass<GltfMesh> {
         public GltfMeshes(Gltf pRoot) : base(pRoot) {
         }
@@ -352,6 +395,8 @@ namespace org.herbal3d.BasilOS {
     }
 
     public class GltfMesh : GltfClass {
+        public string name;
+        public GltfPrimitive primitives;
         public OMVR.Face underlyingMesh;
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.meshes.Add(this);
@@ -359,10 +404,96 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt) {
             outt.Write("{\n");
+            if (!String.IsNullOrEmpty(name))
+                outt.Write(GltfClass.t2 + "\"name\": \"" + name + "\",\n");
+            outt.Write(GltfClass.t2 + "\"primitives\": ");
+            primitives.ToJSON(outt);
             outt.Write("}");
         }
     }
 
+    // =============================================================
+    public class GltfPrimitives : GltfListClass<GltfMesh> {
+        public GltfPrimitives(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"primitives\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"primitives\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+
+        public void ToJSONArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"primitives\": ");
+            outt.Write("[");
+            if (this.Count != 0)
+                outt.Write("\n");
+            bool first = true;
+            this.ForEach(xx => {
+                if (!first) {
+                    outt.Write(",\n");
+                }
+                xx.ToJSON(outt);
+                first = false;
+            });
+            outt.Write("]");
+        }
+    }
+
+    public class GltfPrimitive : GltfClass {
+        public int mode;
+        public GltfAccessor indices;
+        public GltfAccessor normals;
+        public GltfAccessor position;
+        public GltfAccessor texcoord;
+        public GltfMaterial material;
+        public GltfPrimitive(Gltf pRoot, string pID) : base(pRoot, pID) {
+            mode = 4;
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{");
+            outt.Write(GltfClass.t3 + "\"mode\": " + mode.ToString() + ",\n");
+            outt.Write(GltfClass.t3 + "\"indices\": \"" + indices.ID + "\",\n");
+            outt.Write(GltfClass.t3 + "\"attributes\": {\n");
+            outt.Write(GltfClass.t4 + "\"NORMAL\": \"" + normals.ID + "\",\n");
+            outt.Write(GltfClass.t4 + "\"POSITION\": \"" + position.ID + "\",\n");
+            outt.Write(GltfClass.t4 + "\"TEXCOORD_0\": \"" + texcoord.ID + "\"\n");
+            outt.Write(GltfClass.t3 + "},\n");
+            outt.Write(GltfClass.t3 + "\"material\": \"" + material.ID + "\"\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfMaterials : GltfListClass<GltfAccessor> {
+        public GltfMaterials(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"materials\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"materials\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfMaterial : GltfClass {
+        public GltfMaterial(Gltf pRoot, string pID) : base(pRoot, pID) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
     public class GltfAccessors : GltfListClass<GltfAccessor> {
         public GltfAccessors(Gltf pRoot) : base(pRoot) {
         }
@@ -388,6 +519,7 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
+    // =============================================================
     public class GltfBuffers : GltfListClass<GltfBuffer> {
         public GltfBuffers(Gltf pRoot) : base(pRoot) {
         }
@@ -413,6 +545,7 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
+    // =============================================================
     public class GltfBufferViews : GltfListClass<GltfBufferView> {
         public GltfBufferViews(Gltf pRoot) : base(pRoot) {
         }
@@ -430,6 +563,162 @@ namespace org.herbal3d.BasilOS {
     public class GltfBufferView : GltfClass {
         public GltfBufferView(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.bufferViews.Add(this);
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfTechniques : GltfListClass<GltfTechnique> {
+        public GltfTechniques(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"bufferViews\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"bufferViews\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfTechnique : GltfClass {
+        public GltfTechnique(Gltf pRoot, string pID) : base(pRoot, pID) {
+            gltfRoot.techniques.Add(this);
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfPrograms : GltfListClass<GltfProgram> {
+        public GltfPrograms(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"bufferViews\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"bufferViews\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfProgram : GltfClass {
+        public GltfProgram(Gltf pRoot, string pID) : base(pRoot, pID) {
+            gltfRoot.programs.Add(this);
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfShaders : GltfListClass<GltfShader> {
+        public GltfShaders(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"bufferViews\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"bufferViews\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfShader : GltfClass {
+        public GltfShader(Gltf pRoot, string pID) : base(pRoot, pID) {
+            gltfRoot.shaders.Add(this);
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfTextures : GltfListClass<GltfTexture> {
+        public GltfTextures(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"textures\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"textures\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfTexture : GltfClass {
+        public GltfTexture(Gltf pRoot, string pID) : base(pRoot, pID) {
+            gltfRoot.textures.Add(this);
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfImages : GltfListClass<GltfImage> {
+        public GltfImages(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"images\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"images\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfImage : GltfClass {
+        public GltfImage(Gltf pRoot, string pID) : base(pRoot, pID) {
+            gltfRoot.images.Add(this);
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write("}");
+        }
+    }
+
+    // =============================================================
+    public class GltfSamplers : GltfListClass<GltfSampler> {
+        public GltfSamplers(Gltf pRoot) : base(pRoot) {
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("\"samplers\": ");
+            this.ToJSONMapOfJSON(outt);
+        }
+        public override void ToJSONIDArray(StreamWriter outt) {
+            outt.Write(GltfClass.t2 + "\"samplers\": ");
+            this.ToJSONArrayOfIDs(outt);
+        }
+    }
+
+    public class GltfSampler : GltfClass {
+        public GltfSampler(Gltf pRoot, string pID) : base(pRoot, pID) {
+            gltfRoot.samplers.Add(this);
         }
 
         public override void ToJSON(StreamWriter outt) {
