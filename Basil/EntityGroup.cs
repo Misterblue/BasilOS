@@ -78,10 +78,13 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Add the entity group to the list if it is not alreayd in the list
-        public void AddUniqueEntity(EntityGroup added) {
+        public bool AddUniqueEntity(EntityGroup added) {
+            bool ret = false;
             if (!base.Contains(added)) {
                 base.Add(added);
+                ret = true;
             }
+            return ret;
         }
     }
 }

@@ -40,7 +40,7 @@ namespace org.herbal3d.BasilOS {
         public string GltfTargetDir;    // where to store all the Gltf files
 
         public bool LogConversionStats; // output numbers about number of entities converted
-        public bool LodDetailedSharedFaceStats; // output numbers about face mesh sharing
+        public bool LogDetailedSharedFaceStats; // output numbers about face mesh sharing
         #pragma warning restore CS0649
 
         // =====================================================================================
@@ -75,7 +75,7 @@ namespace org.herbal3d.BasilOS {
                 "./gltf" ),
             new ParameterDefn<bool>("LogConversionStats", "output numbers about number of entities converted",
                 true ),
-            new ParameterDefn<bool>("LodDetailedSharedFaceStats", "output numbers about face mesh sharing",
+            new ParameterDefn<bool>("LogDetailedSharedFaceStats", "output numbers about face mesh sharing",
                 true ),
         };
 

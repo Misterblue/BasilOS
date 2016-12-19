@@ -182,7 +182,7 @@ namespace org.herbal3d.BasilOS {
                         ReorganizeScene(allSOGs, reorgScene);
 
                         // print out information about the similar faces
-                        if (m_params.LodDetailedSharedFaceStats) {
+                        if (m_params.LogDetailedSharedFaceStats) {
                             LogSharedFaceInformation(reorgScene);
                         }
 
@@ -302,10 +302,16 @@ namespace org.herbal3d.BasilOS {
                         if (0 != (int)ep.SOP.ScriptEvents) {
                             // if any of the prims in a linkset have a script, the whole entity is not static
                             reorgScene.nonStaticEntities.AddUniqueEntity(eGroup);
+                            // if (reorgScene.nonStaticEntities.AddUniqueEntity(eGroup)) {
+                            //     m_log.DebugFormat("{0} ReorganiseScene. Added to non-staticEntities: sog={1}", LogHeader, eGroup.SOG.UUID);
+                            // }
                         }
                         else {
                             // the prim is not scripted so we add all its faces to the static group
                             reorgScene.staticEntities.AddUniqueEntity(eGroup);
+                            // if (reorgScene.staticEntities.AddUniqueEntity(eGroup)) {
+                            //     m_log.DebugFormat("{0} ReorganiseScene. Added to staticEntities: sog={1}", LogHeader, eGroup.SOG.UUID);
+                            // }
                         }
                     }
                     else {
@@ -484,10 +490,11 @@ namespace org.herbal3d.BasilOS {
             Gltf gltf = new Gltf();
 
             GltfScene gScene = new GltfScene(gltf, reorgScene.regionID);
+            gScene.name = reorgScene.regionID;
 
             // For each of the entities, create a gltfNode for the root and then add the linkset prims as the children
             reorgScene.nonStaticEntities.ForEach(eg => {
-                AddNodeToGltf(gltf, eg);
+                AddNodeToGltf(gltf, gScene, eg);
             });
 
             // DEBUG DEBUG: rebuiltFaceEntities is not working yet.
@@ -498,7 +505,7 @@ namespace org.herbal3d.BasilOS {
 
             // DEBUG DEBUG: for testing, just pass through the static elements
             reorgScene.staticEntities.ForEach(eg => {
-                AddNodeToGltf(gltf, eg);
+                AddNodeToGltf(gltf, gScene, eg);
             });
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
@@ -507,7 +514,7 @@ namespace org.herbal3d.BasilOS {
             return gltf;
         }
 
-        private void AddNodeToGltf(Gltf gltf, EntityGroup eg) {
+        private void AddNodeToGltf(Gltf gltf, GltfScene containingScene, EntityGroup eg) {
             // Find the root prim of this linkset
             ExtendedPrim rootPrim = null;
             eg.ForEach(epg => {
@@ -516,20 +523,20 @@ namespace org.herbal3d.BasilOS {
                     rootPrim = ep;
                 }
             });
-            GltfNode gRootNode = GltfNodeFromExtendedPrim(gltf, rootPrim);
+            GltfNode gRootNode = GltfNodeFromExtendedPrim(gltf, containingScene, rootPrim);
 
             // Add any children of the root node
             eg.ForEach(epg => {
                 ExtendedPrim ep = epg[PrimGroupType.lod1];
                 if (!ep.SOP.IsRoot) {
-                    GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, ep);
+                    GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, null, ep);
                     gRootNode.children.Add(gChildNode);
                 }
             });
         }
 
         // Copy all the Entity information into gltf Nodes and Meshes
-        private GltfNode GltfNodeFromExtendedPrim(Gltf pGltf, ExtendedPrim ep) {
+        private GltfNode GltfNodeFromExtendedPrim(Gltf pGltf, GltfScene containingScene, ExtendedPrim ep) {
             string id = ep.SOP.UUID.ToString();
             if (ep.SOP.IsRoot) {
                 id += "_root";
@@ -537,7 +544,7 @@ namespace org.herbal3d.BasilOS {
             else {
                 id += "_part" + ep.SOP.LinkNum.ToString();
             }
-            GltfNode ret = new GltfNode(pGltf, id);
+            GltfNode ret = new GltfNode(pGltf, containingScene, id);
 
             ret.name = ep.SOP.Name;
 
@@ -554,12 +561,14 @@ namespace org.herbal3d.BasilOS {
                 //             LogHeader, ret.translation, ret.rotation);
             }
 
+            int numFace = 0;
             ep.facetedMesh.Faces.ForEach(face => {
-                string meshID = ep.SOP.UUID.ToString() + "_" + "face_" + face.ID.ToString();
+                string meshID = ep.SOP.UUID.ToString() + "_face" + numFace.ToString();
                 GltfMesh mesh = new GltfMesh(pGltf, meshID);
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Face. id={1}", LogHeader, meshID);
                 mesh.underlyingMesh = face;
                 ret.meshes.Add(mesh);
+                numFace++;
             });
 
             return ret;
@@ -577,7 +586,9 @@ namespace org.herbal3d.BasilOS {
 
             if (targetDir != null) {
                 string gltfFilename = JoinFilePieces(targetDir, regionName + ".gltf");
-                File.WriteAllText(gltfFilename, gltf.toJSON());
+                using (StreamWriter outt = File.CreateText(gltfFilename)) {
+                    gltf.ToJSON(outt);
+                }
             }
         }
 
