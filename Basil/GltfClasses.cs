@@ -180,6 +180,7 @@ namespace org.herbal3d.BasilOS {
     // =============================================================
     public class Gltf : GltfClass {
         public string defaultSceneID;   // ID of default scene
+        public GltfAsset asset;
         public GltfScenes scenes;       // scenes that make up this package
         public GltfNodes nodes;         // nodes in the scenes
         public GltfMeshes meshes;       // the meshes for the nodes
@@ -195,6 +196,7 @@ namespace org.herbal3d.BasilOS {
         public GltfSamplers samplers;
 
         public Gltf() : base() {
+            asset = new GltfAsset(this);
             scenes = new GltfScenes(this);
             nodes = new GltfNodes(this);
             meshes = new GltfMeshes(this);
@@ -265,6 +267,48 @@ namespace org.herbal3d.BasilOS {
             buffers.ToJSON(outt);
             outt.Write("\n");
 
+            outt.Write("}\n");
+        }
+    }
+
+    // =============================================================
+    // A simple collection to keep name/value strings
+    public class GltfAttributes : Dictionary<string, string> {
+        public void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            bool first = true;
+            foreach (KeyValuePair<string, string> kvp in this) {
+                if (!first) {
+                    outt.Write(",");
+                }
+                outt.Write(GltfClass.t2 + "\"" + kvp.Key + "\": \"" + kvp.Value + "\"\n");
+                first = false;
+            }
+            outt.Write("}\n");
+        }
+    }
+
+    // =============================================================
+    public class GltfAsset : GltfClass {
+        public string generator = "BasilConversion";
+        public string premulitpliedAlpha = "false";
+        public GltfAttributes profile;
+        public int version = 1;
+
+        public GltfAsset(Gltf pRoot) : base(pRoot, "") {
+            profile = new GltfAttributes();
+            profile.Add("api", "WebGL");
+            profile.Add("version", "1.0");
+        }
+
+        public override void ToJSON(StreamWriter outt) {
+            outt.Write("{\n");
+            outt.Write(GltfClass.t1 + "\"generator\": \"" + generator + "\",\n");
+            outt.Write(GltfClass.t1 + "\"premultipliedAlpha\": \"" + premulitpliedAlpha + "\",\n");
+            outt.Write(GltfClass.t1 + "\"profile\": ");
+            profile.ToJSON(outt);
+            outt.Write(",\n");
+            outt.Write(GltfClass.t1 + "\"version\": " + version.ToString() + "\n");
             outt.Write("}\n");
         }
     }
