@@ -443,23 +443,6 @@ namespace org.herbal3d.BasilOS {
 
             EntityGroup meshes = new EntityGroup(sog);
 
-            /* TODO: change the completion logic to use Promise.All()
-            // This commented out code block is close but the types don't work out
-            meshes = Promise.All(sog.Parts.SelectMany<SceneObjectPart, IPromise<ExtendedPrimGroup>>(sop => {
-                OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
-                return mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
-                    .Then(ePrimGroup => {
-                        EntityGroup eg = new EntityGroup(sog);
-                        eg.Add(ePrimGroup);
-                        prom.Resolve(eg);
-                    })
-                    .Catch(e => {
-                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
-                        prom.Reject(e);
-                    });
-            }) );
-            */
-
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
 
@@ -471,6 +454,7 @@ namespace org.herbal3d.BasilOS {
                             meshes.Add(ePrimGroup);
                         }
                         // can't tell what order the prims are completed in so wait until they are all meshed
+                        // TODO: change the completion logic to use Promise.All()
                         if (--totalChildren <= 0) {
                             prom.Resolve(meshes);
                         }
