@@ -192,11 +192,13 @@ namespace org.herbal3d.BasilOS {
 
                         // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
 
-                        // Scan through all the textures and convert them into PNGs for the Gltf scene
-                        ExportTexturesForGltf(reorgScene, m_params.GltfTargetDir);
+                        // Build the materials for reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
 
                         // Build the GLTF structures from the reorganized scene
                         Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
+
+                        // Scan through all the textures and convert them into PNGs for the Gltf scene
+                        ExportTexturesForGltf(reorgScene, m_params.GltfTargetDir);
 
                         // Write out the Gltf information
                         ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
