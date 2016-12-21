@@ -444,6 +444,7 @@ namespace org.herbal3d.BasilOS {
         public OMVR.Face underlyingMesh;
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.meshes.Add(this);
+            primitives = new GltfPrimitive(gltfRoot);
         }
 
         public override void ToJSON(StreamWriter outt) {
@@ -494,20 +495,37 @@ namespace org.herbal3d.BasilOS {
         public GltfAccessor position;
         public GltfAccessor texcoord;
         public GltfMaterial material;
-        public GltfPrimitive(Gltf pRoot, string pID) : base(pRoot, pID) {
+        public GltfPrimitive(Gltf pRoot) : base(pRoot, "primitive") {
             mode = 4;
         }
 
         public override void ToJSON(StreamWriter outt) {
             outt.Write("{");
             outt.Write(GltfClass.t3 + "\"mode\": " + mode.ToString() + ",\n");
-            outt.Write(GltfClass.t3 + "\"indices\": \"" + indices.ID + "\",\n");
+            if (indices != null) {
+                outt.Write(GltfClass.t3 + "\"indices\": \"" + indices.ID + "\",\n");
+            }
+            bool yesComma = false;
             outt.Write(GltfClass.t3 + "\"attributes\": {\n");
-            outt.Write(GltfClass.t4 + "\"NORMAL\": \"" + normals.ID + "\",\n");
-            outt.Write(GltfClass.t4 + "\"POSITION\": \"" + position.ID + "\",\n");
-            outt.Write(GltfClass.t4 + "\"TEXCOORD_0\": \"" + texcoord.ID + "\"\n");
-            outt.Write(GltfClass.t3 + "},\n");
-            outt.Write(GltfClass.t3 + "\"material\": \"" + material.ID + "\"\n");
+            if (normals != null) {
+                outt.Write(GltfClass.t4 + "\"NORMAL\": \"" + normals.ID + "\"\n");
+                yesComma = true;
+            }
+            if (position != null) {
+                if (yesComma) outt.Write(",");
+                outt.Write(GltfClass.t4 + "\"POSITION\": \"" + position.ID + "\"\n");
+                yesComma = true;
+            }
+            if (texcoord != null) {
+                if (yesComma) outt.Write(",");
+                outt.Write(GltfClass.t4 + "\"TEXCOORD_0\": \"" + texcoord.ID + "\"\n");
+                yesComma = true;
+            }
+            outt.Write(GltfClass.t3 + "}\n");
+            if (material != null) {
+                outt.Write(",");        // Take note of the need for the comma
+                outt.Write(GltfClass.t3 + "\"material\": \"" + material.ID + "\"\n");
+            }
             outt.Write("}");
         }
     }
