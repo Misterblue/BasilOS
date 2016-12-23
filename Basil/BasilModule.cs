@@ -113,23 +113,28 @@ namespace org.herbal3d.BasilOS {
 
         // Selection of a particular face of a prim. Contains index and ExtendedPrim
         //     so we have both the local coords and the group coords.
-        private class FaceSelection {
+        private class MeshWithMaterial {
             public ExtendedPrim containingPrim;
             public int faceIndex;
+            public OMV.Primitive.TextureEntry textureEntry;
+            public OMV.Primitive.TextureEntryFace textureEntryFace;
 
-            public FaceSelection(ExtendedPrim pContainingPrim, int pI) {
+            public MeshWithMaterial(ExtendedPrim pContainingPrim, int pFaceIndex,
+                                    OMV.Primitive.TextureEntry pTextureEntry, OMV.Primitive.TextureEntryFace pTextureEntryFace) {
                 containingPrim = pContainingPrim;
-                faceIndex = pI;
+                faceIndex = pFaceIndex;
+                textureEntry = pTextureEntry;
+                textureEntryFace = pTextureEntryFace;
             }
         }
 
         // Lists of similar faces indexed by the texture hash
-        private class SimilarFaces : Dictionary<int, List<FaceSelection>> {
+        private class SimilarFaces : Dictionary<int, List<MeshWithMaterial>> {
             public SimilarFaces() : base() {
             }
-            public void AddSimilarFace(int pHash, FaceSelection pFace) {
+            public void AddSimilarFace(int pHash, MeshWithMaterial pFace) {
                 if (! this.ContainsKey(pHash)) {
-                    this.Add(pHash, new List<FaceSelection>());
+                    this.Add(pHash, new List<MeshWithMaterial>());
                 }
                 this[pHash].Add(pFace);
             }
@@ -336,13 +341,11 @@ namespace org.herbal3d.BasilOS {
                     for (int ii = 0; ii < numFaces; ii++) {
                         OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
                         int hashCode = 0;
-                        if (tef != null) {
-                            hashCode = tef.GetHashCode();
+                        if (tef == null) {
+                            tef = tex.DefaultTexture;
                         }
-                        else {
-                            hashCode = tex.DefaultTexture.GetHashCode();
-                        }
-                        reorgScene.similarFaces.AddSimilarFace(hashCode, new FaceSelection(ep, ii));
+                        hashCode = tef.GetHashCode();
+                        reorgScene.similarFaces.AddSimilarFace(hashCode, new MeshWithMaterial(ep, ii, tex, tef));
                     }
                 });
             });
@@ -360,7 +363,7 @@ namespace org.herbal3d.BasilOS {
                 int totalVerticesPerUnique = 0;
                 List<OMVR.Vertex> uniqueVertices = new List<OMVR.Vertex>();
 
-                List<FaceSelection> similar = reorgScene.similarFaces[key];
+                List<MeshWithMaterial> similar = reorgScene.similarFaces[key];
                 similar.ForEach(oneSimilarFace => {
                     ExtendedPrim ep = oneSimilarFace.containingPrim;
                     int ii = oneSimilarFace.faceIndex;
@@ -396,10 +399,10 @@ namespace org.herbal3d.BasilOS {
 
             foreach (int key in reorgScene.similarFaces.Keys) {
                 // This is the list of faces that use one particular face material
-                List<FaceSelection> similar = reorgScene.similarFaces[key];
+                List<MeshWithMaterial> similar = reorgScene.similarFaces[key];
 
                 // Loop through the faces and find the 'middle one'
-                FaceSelection rootFace = null;
+                MeshWithMaterial rootFace = null;
                 // similar.ForEach(oneSimilarFace => {
                 // });
                 // for the moment, just select the first one.
