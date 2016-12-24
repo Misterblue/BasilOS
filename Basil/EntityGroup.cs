@@ -86,5 +86,15 @@ namespace org.herbal3d.BasilOS {
             }
             return ret;
         }
+
+        // Perform an action on every extended prim in this EntityGroupList
+        public void ForEachExtendedPrim(Action<ExtendedPrim> aeg) {
+            this.ForEach(eGroup => {
+                eGroup.ForEach(ePGroup => {
+                    ExtendedPrim ep = ePGroup[PrimGroupType.lod1];  // the interesting one is the high rez one
+                    aeg(ep);
+                });
+            });
+        }
     }
 }

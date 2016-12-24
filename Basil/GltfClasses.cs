@@ -215,6 +215,12 @@ namespace org.herbal3d.BasilOS {
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
+        public void BuildMaterials() {
+        }
+
+        // Meshes with OMVR.Faces have been added to the scene. Pass over all
+        //   the meshes and create the Buffers, BufferViews, and Accessors.
+        // Called before calling ToJSON().
         public void BuildBuffers() {
         }
 

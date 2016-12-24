@@ -26,16 +26,18 @@ using OMV = OpenMetaverse;
 namespace org.herbal3d.BasilOS {
     public class BasilStats : IDisposable {
 
+        public int numEntities = 0;
+        public int numStaticEntities = 0;
         public int numPrims = 0;
         public int numSculpties = 0;
         public int numMeshes = 0;
-        public int numEntities = 0;
         public int numLinksets = 0;
-        public int numEntitiesWithScripts = 0;
+        public int numStaticLinksets = 0;
         public int numFaces = 0;
         public int numNullTexturedFaces = 0;
+        public int numMaterials = 0;
 
-        public Dictionary<int, int> textureCount = new Dictionary<int, int>();
+        public Dictionary<int, int> materialCount = new Dictionary<int, int>();
         public List<OMV.UUID> textureIDs = new List<OMV.UUID>();
 
         public Scene m_scene;
@@ -44,8 +46,23 @@ namespace org.herbal3d.BasilOS {
         public BasilStats(Scene pScene, ILog pLog) {
             m_scene = pScene;
             m_log = pLog;
-            textureCount = new Dictionary<int, int>();
+            materialCount = new Dictionary<int, int>();
             textureIDs = new List<OMV.UUID>();
+        }
+
+        public void LogAll(string header) {
+            m_log.InfoFormat("{0} ", header);
+            m_log.InfoFormat("{0} {1} numEntities={2}", header, m_scene.Name, this.numEntities);
+            m_log.InfoFormat("{0} {1} numStaticEntities={2}", header, m_scene.Name, this.numStaticEntities);
+            m_log.InfoFormat("{0} {1} numLinksets={2}", header, m_scene.Name, this.numLinksets);
+            m_log.InfoFormat("{0} {1} numStaticLinksets={2}", header, m_scene.Name, this.numStaticLinksets);
+            m_log.InfoFormat("{0} {1} numPrims={2}", header, m_scene.Name, this.numPrims);
+            m_log.InfoFormat("{0} {1} numSculpties={2}", header, m_scene.Name, this.numSculpties);
+            m_log.InfoFormat("{0} {1} numMeshes={2}", header, m_scene.Name, this.numMeshes);
+            m_log.InfoFormat("{0} {1} numFaces={2}", header, m_scene.Name, this.numFaces);
+            m_log.InfoFormat("{0} {1} num unique materials={2}", header, m_scene.Name, this.numMaterials);
+            m_log.InfoFormat("{0} {1} num null textured faces={2}", header, m_scene.Name, this.numNullTexturedFaces);
+            m_log.InfoFormat("{0} {1} num unique texture IDs={2}", header, m_scene.Name, this.textureIDs.Count);
         }
 
         #region IDisposable Support
@@ -54,8 +71,8 @@ namespace org.herbal3d.BasilOS {
         protected virtual void Dispose(bool disposing) {
             if (!disposedValue) {
                 if (disposing) {
-                    textureCount.Clear();
-                    textureCount = null;
+                    materialCount.Clear();
+                    materialCount = null;
                     textureIDs.Clear();
                     textureIDs = null;
                 }
