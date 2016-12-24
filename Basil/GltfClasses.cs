@@ -215,7 +215,18 @@ namespace org.herbal3d.BasilOS {
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
-        public void BuildMaterials() {
+        public void BuildPrimitives() {
+            Dictionary<int, GltfMaterial> materialHashes = new Dictionary<int, GltfMaterial>();
+
+            meshes.ForEach(mesh => {
+                GltfMaterial theMaterial = null;
+                int hash = mesh.underlyingMesh.TextureFace.GetHashCode();
+                if (!materialHashes.ContainsKey(hash)) {
+                    // Material has not beeen created yet
+                }
+                mesh.primitives.material = theMaterial;
+
+            });
         }
 
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
@@ -447,6 +458,7 @@ namespace org.herbal3d.BasilOS {
     public class GltfMesh : GltfClass {
         public string name;
         public GltfPrimitive primitives;
+        public GltfAttributes attributes;
         public OMVR.Face underlyingMesh;
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.meshes.Add(this);
@@ -537,7 +549,7 @@ namespace org.herbal3d.BasilOS {
     }
 
     // =============================================================
-    public class GltfMaterials : GltfListClass<GltfAccessor> {
+    public class GltfMaterials : GltfListClass<GltfMaterial> {
         public GltfMaterials(Gltf pRoot) : base(pRoot) {
         }
 

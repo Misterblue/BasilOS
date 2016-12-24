@@ -234,6 +234,38 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
+        // Convert all prims in SOG into meshes and return the mesh group.
+        private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
+                        IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
+            // m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
+            var prom = new Promise<EntityGroup>();
+
+            EntityGroup meshes = new EntityGroup(sog);
+
+            int totalChildren = sog.Parts.GetLength(0);
+            foreach (SceneObjectPart sop in sog.Parts) {
+
+                OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
+                mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
+                    .Then(ePrimGroup => {
+                        lock (meshes) {
+                            // m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}", LogHeader, sop.UUID);
+                            meshes.Add(ePrimGroup);
+                        }
+                        // can't tell what order the prims are completed in so wait until they are all meshed
+                        // TODO: change the completion logic to use Promise.All()
+                        if (--totalChildren <= 0) {
+                            prom.Resolve(meshes);
+                        }
+                    })
+                    .Catch(e => {
+                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
+                        prom.Reject(e);
+                    });
+            }
+            return prom;
+        }
+
         // Gather statistics
         private void ExtractStatistics(ReorganizedScene reorgScene, BasilStats stats) {
             stats.numEntities = reorgScene.staticEntities.Count + reorgScene.nonStaticEntities.Count;
@@ -448,38 +480,6 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
-        // Convert all prims in SOG into meshes and return the mesh group.
-        private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
-                        IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
-            // m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
-            var prom = new Promise<EntityGroup>();
-
-            EntityGroup meshes = new EntityGroup(sog);
-
-            int totalChildren = sog.Parts.GetLength(0);
-            foreach (SceneObjectPart sop in sog.Parts) {
-
-                OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
-                mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
-                    .Then(ePrimGroup => {
-                        lock (meshes) {
-                            // m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}", LogHeader, sop.UUID);
-                            meshes.Add(ePrimGroup);
-                        }
-                        // can't tell what order the prims are completed in so wait until they are all meshed
-                        // TODO: change the completion logic to use Promise.All()
-                        if (--totalChildren <= 0) {
-                            prom.Resolve(meshes);
-                        }
-                    })
-                    .Catch(e => {
-                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
-                        prom.Reject(e);
-                    });
-            }
-            return prom;
-        }
-
         private void ExportTexturesForGltf(ReorganizedScene reorgScene, string targetDir) {
             return;
         }
@@ -508,7 +508,7 @@ namespace org.herbal3d.BasilOS {
             });
 
             // Scan all the meshes and build the materials from the face texture information
-            gltf.BuildMaterials();
+            gltf.BuildPrimitives();
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
             gltf.BuildBuffers();
