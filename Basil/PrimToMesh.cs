@@ -188,5 +188,9 @@ namespace org.herbal3d.BasilOS {
         public void Dispose() {
             m_mesher = null;
         }
+
+        public void UpdateCoords(OMVR.Face pFace, OMV.Primitive.TextureEntryFace pTef) {
+            m_mesher.TransformTexCoords(pFace.Vertices, pFace.Center, pTef, new OMV.Vector3(1,1,1));
+        }
     }
 }

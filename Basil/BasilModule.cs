@@ -248,6 +248,8 @@ namespace org.herbal3d.BasilOS {
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Then(ePrimGroup => {
+                        // Preform per face texture adjustments (update UV for repeat and offset)
+                        AdjustTextureCoords(aPrim, ePrimGroup, mesher);
                         lock (meshes) {
                             // m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}", LogHeader, sop.UUID);
                             meshes.Add(ePrimGroup);
@@ -264,6 +266,22 @@ namespace org.herbal3d.BasilOS {
                     });
             }
             return prom;
+        }
+
+        /// <summary>
+        /// Each of the face textures casn be repeated and/or offset. Apply those operations to the UV
+        /// coordinates for the faces.
+        /// </summary>
+        /// <param name="pPrim"></param>
+        /// <param name="pPrimGroup"></param>
+        /// <param name="pMesher"></param>
+        private void AdjustTextureCoords(OMV.Primitive pPrim, ExtendedPrimGroup pPrimGroup, PrimToMesh pMesher) {
+            // each of the lod versions need adjusting
+            foreach (ExtendedPrim ep in pPrimGroup.Values) {
+                for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
+                    pMesher.UpdateCoords(ep.facetedMesh.Faces[ii], pPrim.Textures.FaceTextures[ii]);
+                }
+            }
         }
 
         // Gather statistics
