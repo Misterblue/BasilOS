@@ -107,7 +107,7 @@ namespace org.herbal3d.BasilOS {
                 gl.ToJSON(outt, level+1);
                 first = false;
             });
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -216,10 +216,23 @@ namespace org.herbal3d.BasilOS {
             samplers = new GltfSamplers(this);
         }
 
+        // Say this scene is using the extension.
+        public void UsingExtension(string extName) {
+            if (!extensionsUsed.ContainsKey(extName)) {
+                extensionsUsed.Add(extName, null);
+            }
+        }
+
+        // Function called below to create a URI from an asset ID.
+        // 'type' may be one of 'image', 'mesh', ?
+        public delegate string MakeAssetURI(string type, OMV.UUID uuid);
+        public const string MakeAssetURITypeImage = "image";
+        public const string MakeAssetURITypeMesh = "mesh";
+
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
-        public void BuildPrimitives() {
+        public void BuildPrimitives(MakeAssetURI makeAssetURI) {
             meshes.ForEach(mesh => {
                 GltfMaterial theMaterial = null;
                 int hash = mesh.underlyingMesh.TextureFace.GetHashCode();
@@ -227,28 +240,37 @@ namespace org.herbal3d.BasilOS {
                     // Material has not beeen created yet
                     theMaterial = new GltfMaterial(gltfRoot, mesh.ID + "_mat");
                     theMaterial.hash = hash;
-                    OMV.Color4 aColor = mesh.underlyingMesh.TextureFace.RGBA;
 
                     GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
+                    gltfRoot.UsingExtension("KHR_materials_common");
                     ext.technique = "LAMBERT";  // or 'BLINN' or 'PHONG'
 
-                    // Define the material with  the extensions
-                    theMaterial.values.Add("ambient", new Object[] { aColor.R, aColor.G, aColor.B, aColor.A });
-                    theMaterial.values.Add("diffuse", new Object[] { 0, 0, 0, 1 });
-                    theMaterial.values.Add("emission", new Object[] { 0, 0, 0, 1 });
-                    theMaterial.values.Add("specular", new Object[] { 0, 0, 0, 1 });
-                    GltfTechnique theTechnique = new GltfTechnique(gltfRoot, mesh.ID + "_tech");
+                    OMV.Color4 aColor = mesh.underlyingMesh.TextureFace.RGBA;
+                    ext.values.Add(GltfExtension.valAmbient, aColor);
+
                     OMV.UUID texID = mesh.underlyingMesh.TextureFace.TextureID;
-                    GltfTexture theTexture;
+                    GltfTexture theTexture = null;
                     if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
-                        if (gltfRoot.textures.GetByUUID(texID, out theTexture)) {
+                        if (!gltfRoot.textures.GetByUUID(texID, out theTexture)) {
                             // The texture/image does not exist yet
+                            theTexture = new GltfTexture(gltfRoot, texID.ToString() + "_tex");
+                            theTexture.underlyingUUID = texID;
+                            theTexture.target = WebGLConstants.TEXTURE_2D;
+                            theTexture.type = WebGLConstants.UNSIGNED_BYTE;
+                            theTexture.format = WebGLConstants.RGBA;
+                            theTexture.internalFormat = WebGLConstants.RGBA;
+                            GltfImage theImage = null;
+                            if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
+                                theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
+                                theImage.underlyingUUID = texID;
+                                theImage.URI = makeAssetURI(MakeAssetURITypeImage, texID);
+                            }
+                            theTexture.source = theImage;
                         }
+                        ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
                     }
 
-                    // A material requires a technique
-                    // A technique requires a program
-                    // A program requires a fragmentShader and a vertexShader
+                    theMaterial.extensions.Add(ext);
                 }
                 mesh.primitives.material = theMaterial;
             });
@@ -265,7 +287,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{");
+            outt.Write("{\n");
 
             if (extensionsUsed.Count > 0) {
                 outt.Write(GltfClass.Indent(level) + "\"extensionsUsed\": ");
@@ -311,6 +333,18 @@ namespace org.herbal3d.BasilOS {
                 outt.Write(",\n");
             }
 
+            if (textures.Count > 0) {
+                outt.Write(GltfClass.Indent(level) + "\"textures\": ");
+                textures.ToJSON(outt, level+1);
+                outt.Write(",\n");
+            }
+
+            if (images.Count > 0) {
+                outt.Write(GltfClass.Indent(level) + "\"images\": ");
+                images.ToJSON(outt, level+1);
+                outt.Write(",\n");
+            }
+
             if (programs.Count > 0) {
                 outt.Write(GltfClass.Indent(level) + "\"programs\": ");
                 programs.ToJSON(outt, level+1);
@@ -351,13 +385,12 @@ namespace org.herbal3d.BasilOS {
                 else {
                     outt.Write(",\n");
                 }
-                if (kvp.Value is string)
+
+                if (kvp.Value is string) {
                     outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": \"" + kvp.Value + "\"");
-                if (kvp.Value is int) {
-                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": " + kvp.Value.ToString() + "");
                 }
-                if (kvp.Value.GetType().IsArray) {
-                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": [");
+                else if (kvp.Value.GetType().IsArray) {
+                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": [ ");
                     Object[] values = (Object[])kvp.Value;
                     bool first2 = true;
                     for (int ii = 0; ii < values.Length; ii++) {
@@ -365,7 +398,10 @@ namespace org.herbal3d.BasilOS {
                         first2 = false;
                         outt.Write(values[ii].ToString());
                     }
-                    outt.Write("]");
+                    outt.Write(" ]");
+                }
+                else {
+                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": " + kvp.Value.ToString() + "");
                 }
                 first = false;
             }
@@ -385,7 +421,7 @@ namespace org.herbal3d.BasilOS {
                 outt.Write(GltfClass.Indent(level) + "\"" + key +"\"");
                 first = false;
             }
-            outt.Write("]");
+            outt.Write(" ]");
         }
     }
 
@@ -517,7 +553,7 @@ namespace org.herbal3d.BasilOS {
             outt.Write(",\n");
             outt.Write(GltfClass.Indent(level) + "\"meshes\": ");
             meshes.ToJSONArrayOfIDs(outt, level+1);
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -550,7 +586,7 @@ namespace org.herbal3d.BasilOS {
                 outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
             outt.Write(GltfClass.Indent(level) + "\"primitives\": ");
             primitives.ToJSON(outt, level+1);
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -620,7 +656,7 @@ namespace org.herbal3d.BasilOS {
             }
             outt.Write(GltfClass.Indent(level) + "}\n");
 
-            outt.Write(GltfClass.Indent(level) + "}");
+            outt.Write(GltfClass.Indent(level) + " }");
         }
     }
 
@@ -673,7 +709,7 @@ namespace org.herbal3d.BasilOS {
                 outt.Write(GltfClass.Indent(level) + "\"extensions\": \"");
                 extensions.ToJSON(outt, level + 1);
             }
-            outt.Write("}");
+            outt.Write(GltfClass.Indent(level) + " }");
         }
     }
 
@@ -697,7 +733,7 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -721,7 +757,7 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -745,7 +781,7 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -769,7 +805,7 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -793,7 +829,7 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -817,7 +853,7 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -847,13 +883,32 @@ namespace org.herbal3d.BasilOS {
 
     public class GltfTexture : GltfClass {
         public OMV.UUID underlyingUUID;
+        public uint target;
+        public uint type;
+        public uint format;
+        public uint internalFormat;
+        public GltfImage source;
+        public GltfSampler sampler;
         public GltfTexture(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.textures.Add(this);
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(GltfClass.Indent(level) + "\"target\": " + target + ",\n");
+            outt.Write(GltfClass.Indent(level) + "\"type\": " + type + ",\n");
+            outt.Write(GltfClass.Indent(level) + "\"format\": " + format + ",\n");
+            outt.Write(GltfClass.Indent(level) + "\"internalFormat\": " + internalFormat + "");
+            if (source != null) {
+                outt.Write(",\n");
+                outt.Write(GltfClass.Indent(level) + "\"source\": \"" + source.ID + "\"");
+            }
+            if (sampler != null) {
+                outt.Write(",\n");
+                outt.Write(GltfClass.Indent(level) + "\"sampler\": \"" + sampler.ID + "\"");
+            }
+            outt.Write("\n");
+            outt.Write(GltfClass.Indent(level) + "}");
         }
     }
 
@@ -895,7 +950,7 @@ namespace org.herbal3d.BasilOS {
                 outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
             if (!String.IsNullOrEmpty(URI))
                 outt.Write(GltfClass.Indent(level) + "\"uri\": \"" + URI + "\",\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
@@ -919,12 +974,12 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            outt.Write("}");
+            outt.Write(" }");
         }
     }
 
     // =============================================================
-    public class GltfExtensions : GltfListClass<GltfExtensions> {
+    public class GltfExtensions : GltfListClass<GltfExtension> {
         public GltfExtensions(Gltf pRoot) : base(pRoot) {
         }
 

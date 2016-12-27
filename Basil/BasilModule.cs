@@ -530,12 +530,16 @@ namespace org.herbal3d.BasilOS {
             });
 
             // Scan all the meshes and build the materials from the face texture information
-            gltf.BuildPrimitives();
+            gltf.BuildPrimitives(CreateAssetURI);
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
             gltf.BuildBuffers();
             
             return gltf;
+        }
+
+        private string CreateAssetURI(string type, OMV.UUID uuid) {
+            return "./" + uuid.ToString() + ".png";
         }
 
         private void AddNodeToGltf(Gltf gltf, GltfScene containingScene, EntityGroup eg) {
