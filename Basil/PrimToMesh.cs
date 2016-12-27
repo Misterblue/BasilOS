@@ -190,7 +190,9 @@ namespace org.herbal3d.BasilOS {
         }
 
         public void UpdateCoords(OMVR.Face pFace, OMV.Primitive.TextureEntryFace pTef) {
-            m_mesher.TransformTexCoords(pFace.Vertices, pFace.Center, pTef, new OMV.Vector3(1,1,1));
+            if (pFace.Vertices != null) {
+                m_mesher.TransformTexCoords(pFace.Vertices, pFace.Center, pTef, new OMV.Vector3(1,1,1));
+            }
         }
     }
 }

@@ -279,7 +279,11 @@ namespace org.herbal3d.BasilOS {
             // each of the lod versions need adjusting
             foreach (ExtendedPrim ep in pPrimGroup.Values) {
                 for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
-                    pMesher.UpdateCoords(ep.facetedMesh.Faces[ii], pPrim.Textures.FaceTextures[ii]);
+                    OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
+                    if (tef == null) {
+                        tef = pPrim.Textures.DefaultTexture;
+                    }
+                    pMesher.UpdateCoords(ep.facetedMesh.Faces[ii], tef);
                 }
             }
         }
