@@ -108,7 +108,7 @@ namespace org.herbal3d.BasilOS {
 
             ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, mesh);
 
-            m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
+            // m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
 
             ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
 

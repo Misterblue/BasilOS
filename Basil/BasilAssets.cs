@@ -62,6 +62,12 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
+        /// <summary>
+        /// Fetch a texture and return an OMVA.AssetTexture. The only information initialized
+        /// in the AssetTexture is the UUID and the binary data.
+        /// </summary>
+        /// <param name="handle"></param>
+        /// <returns></returns>
         public override IPromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle) {
             var prom = new Promise<OMVA.AssetTexture>();
 

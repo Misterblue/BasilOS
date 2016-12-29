@@ -18,6 +18,8 @@ using System.Text;
 using System.Collections.Generic;
 using System.IO;
 
+using log4net;
+
 // I hoped to keep the Gltf classes separate from the OMV requirement but
 //    it doesn't make sense to copy all the mesh info into new structures.
 using OMV = OpenMetaverse;
@@ -36,7 +38,7 @@ namespace org.herbal3d.BasilOS {
             ID = pID;
         }
 
-        public string Vector3ToJSONArray(OMV.Vector3 vect) {
+        public static string Vector3ToJSONArray(OMV.Vector3 vect) {
             StringBuilder buff = new StringBuilder();
             buff.Append("[ ");
             buff.Append(vect.X.ToString());
@@ -48,7 +50,7 @@ namespace org.herbal3d.BasilOS {
             return buff.ToString();
         }
 
-        public string QuaternionToJSONArray(OMV.Quaternion vect) {
+        public static string QuaternionToJSONArray(OMV.Quaternion vect) {
             StringBuilder buff = new StringBuilder();
             buff.Append("[ ");
             buff.Append(vect.X.ToString());
@@ -177,6 +179,9 @@ namespace org.herbal3d.BasilOS {
 
     // =============================================================
     public class Gltf : GltfClass {
+        ILog m_log;
+        private static string LogHeader = "Gltf";
+
         public GltfAttributes extensionsUsed;   // list of extensions used herein
 
         public string defaultSceneID;   // ID of default scene
@@ -196,7 +201,9 @@ namespace org.herbal3d.BasilOS {
         public GltfImages images;
         public GltfSamplers samplers;
 
-        public Gltf() : base() {
+        public Gltf(ILog pLogger) : base() {
+            m_log = pLogger;
+
             gltfRoot = this;
 
             extensionsUsed = new GltfAttributes();
@@ -226,8 +233,9 @@ namespace org.herbal3d.BasilOS {
         // Function called below to create a URI from an asset ID.
         // 'type' may be one of 'image', 'mesh', ?
         public delegate string MakeAssetURI(string type, OMV.UUID uuid);
-        public const string MakeAssetURITypeImage = "image";
+        public const string MakeAssetURITypeImage = "image";    // image of type PNG
         public const string MakeAssetURITypeMesh = "mesh";
+        public const string MakeAssetURITypeBuff = "buff";      // binary buffer
 
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
@@ -242,7 +250,6 @@ namespace org.herbal3d.BasilOS {
                     theMaterial.hash = hash;
 
                     GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
-                    gltfRoot.UsingExtension("KHR_materials_common");
                     ext.technique = "LAMBERT";  // or 'BLINN' or 'PHONG'
 
                     OMV.Color4 aColor = mesh.underlyingMesh.TextureFace.RGBA;
@@ -263,7 +270,7 @@ namespace org.herbal3d.BasilOS {
                             if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
                                 theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
                                 theImage.underlyingUUID = texID;
-                                theImage.URI = makeAssetURI(MakeAssetURITypeImage, texID);
+                                theImage.uri = makeAssetURI(MakeAssetURITypeImage, texID);
                             }
                             theTexture.source = theImage;
                         }
@@ -279,7 +286,131 @@ namespace org.herbal3d.BasilOS {
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
-        public void BuildBuffers() {
+        private class VertRef {
+            public ushort ind;
+            public OMVR.Vertex vert;
+            public VertRef(ushort pInd, OMVR.Vertex pVert) {
+                ind = pInd;
+                vert = pVert;
+            }
+        }
+        public void BuildBuffers(MakeAssetURI makeAssetURI) {
+            int numMeshes = 0;
+            int numVerts = 0;
+            Dictionary<OMVR.Vertex, VertRef> vertexIndex = new Dictionary<OMVR.Vertex, VertRef>();
+            List<OMVR.Vertex> vertexCollection = new List<OMVR.Vertex>();
+            ushort vertInd = 0;
+            meshes.ForEach(mesh => {
+                numMeshes++;
+                OMVR.Face face = mesh.underlyingMesh;
+                face.Vertices.ForEach(vert => {
+                    numVerts++;
+                    if (!vertexIndex.ContainsKey(vert)) {
+                        vertexIndex.Add(vert, new VertRef(vertInd, vert));
+                        vertexCollection.Add(vert);
+                        vertInd++;
+                    }
+                    else {
+                        // check to make sure there are no collisions in the hash code
+                        if (vert != vertexIndex[vert].vert) {
+                            m_log.ErrorFormat("{0} BuildBuffers: hash collision. firstVert={2}, newVert={3}",
+                                LogHeader, vertexIndex[vert].vert, vert);
+                        }
+                    }
+                });
+            });
+            m_log.DebugFormat("{0} BuildBuffers: total meshes = {1}", LogHeader, numMeshes);
+            m_log.DebugFormat("{0} BuildBuffers: total vertices = {1}", LogHeader, numVerts);
+            m_log.DebugFormat("{0} BuildBuffers: total unique vertices = {1}", LogHeader, vertInd);
+
+            // Remap all the indices to the new, compacted vertex collection
+            int numIndices = 0;
+            meshes.ForEach(mesh => {
+                OMVR.Face face = mesh.underlyingMesh;
+                numIndices += face.Indices.Count;
+                ushort[] newIndices = new ushort[face.Indices.Count];
+                for (int ii = 0; ii < face.Indices.Count; ii++) {
+                    OMVR.Vertex aVert = face.Vertices[face.Indices[ii]];
+                    newIndices[ii] = vertexIndex[aVert].ind;
+                }
+                mesh.newIndices = newIndices;
+            });
+            m_log.DebugFormat("{0} BuildBuffers: total indices = {1}", LogHeader, numIndices);
+
+            int sizeofVertices = vertexCollection.Count * sizeof(float) * 8;
+            int sizeofIndices = numIndices * sizeof(ushort);
+
+            // The vertices have been unique'ified into 'vertexCollection' and each mesh has
+            //    updated indices in GltfMesh.newIndices.
+
+            byte[] binBuffRaw = new byte[sizeofIndices + sizeofVertices];
+            GltfBuffer binBuff = new GltfBuffer(gltfRoot, "buffer01");
+            binBuff.filename = makeAssetURI(MakeAssetURITypeBuff, OMV.UUID.Random());
+            binBuff.bufferBytes = binBuffRaw;
+
+            GltfBufferView binIndicesView = new GltfBufferView(gltfRoot, "bufferViewIndices");
+            binIndicesView.buffer = binBuff;
+            binIndicesView.byteOffset = 0;
+            binIndicesView.byteLength = sizeofIndices;
+            GltfBufferView binVerticesView = new GltfBufferView(gltfRoot, "bufferViewVertices");
+            binVerticesView.buffer = binBuff;
+            binVerticesView.byteOffset = sizeofIndices;
+            binVerticesView.byteLength = sizeofVertices;
+
+            // Buffer.BlockCopy only moves primitives. Copy the vertices into a float array.
+            float[] floatVertexRemapped = new float[vertexCollection.Count * sizeof(float) * 8];
+            int jj = 0;
+            vertexCollection.ForEach(vert => {
+                floatVertexRemapped[jj++] = vert.Position.X;
+                floatVertexRemapped[jj++] = vert.Position.Y;
+                floatVertexRemapped[jj++] = vert.Position.Z;
+                floatVertexRemapped[jj++] = vert.Normal.X;
+                floatVertexRemapped[jj++] = vert.Normal.Y;
+                floatVertexRemapped[jj++] = vert.Normal.Z;
+                floatVertexRemapped[jj++] = vert.TexCoord.X;
+                floatVertexRemapped[jj++] = vert.TexCoord.Y;
+            });
+
+            Buffer.BlockCopy(floatVertexRemapped, 0, binBuffRaw, sizeofIndices, sizeofVertices);
+
+            int indicesOffset = 0;
+            meshes.ForEach(mesh => {
+                Buffer.BlockCopy(mesh.newIndices, 0, binBuffRaw, indicesOffset, mesh.newIndices.Length * sizeof(ushort));
+                GltfAccessor indicesAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accInd");
+                indicesAccessor.bufferView = binIndicesView;
+                indicesAccessor.count = vertexCollection.Count;
+                indicesAccessor.byteOffset = indicesOffset;
+                indicesAccessor.byteStride = sizeof(ushort);
+                indicesAccessor.compoundType = WebGLConstants.FLOAT;
+                indicesAccessor.type = "SCALAR";
+                GltfAccessor vertexAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accCVer");
+                vertexAccessor.bufferView = binVerticesView;
+                vertexAccessor.count = vertexCollection.Count;
+                vertexAccessor.byteOffset = 0;
+                vertexAccessor.byteStride = sizeof(float) * 8;
+                vertexAccessor.compoundType = WebGLConstants.FLOAT;
+                vertexAccessor.type = "VEC3";
+                GltfAccessor normalsAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accNor");
+                normalsAccessor.bufferView = binVerticesView;
+                normalsAccessor.count = vertexCollection.Count;
+                normalsAccessor.byteOffset = sizeof(float) * 3;
+                normalsAccessor.byteStride = sizeof(float) * 8;
+                normalsAccessor.compoundType = WebGLConstants.FLOAT;
+                normalsAccessor.type = "VEC3";
+                GltfAccessor UVAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accUV");
+                UVAccessor.bufferView = binVerticesView;
+                UVAccessor.count = vertexCollection.Count;
+                UVAccessor.byteOffset = sizeof(float) * 6;
+                UVAccessor.byteStride = sizeof(float) * 8;
+                UVAccessor.compoundType = WebGLConstants.FLOAT;
+                UVAccessor.type = "VEC2";
+
+                mesh.primitives.indices = indicesAccessor;
+                mesh.primitives.position = vertexAccessor;
+                mesh.primitives.normals = normalsAccessor;
+                mesh.primitives.texcoord = UVAccessor;
+            });
+
         }
 
         public void ToJSON(StreamWriter outt) {
@@ -364,6 +495,61 @@ namespace org.herbal3d.BasilOS {
 
             outt.Write("}\n");
         }
+
+        // Used to output lines of JSON values. Used in the pattern:
+        //    public void ToJSON(StreamWriter outt, int level) {
+        //        outt.Write("{");
+        //        bool first = true;
+        //        foreach (KeyValuePair<string, Object> kvp in this) {
+        //            first = WriteJSONValueLine(outt, level, first, kvp.Key, kvp.Value);
+        //        outt.Write("\n" + GltfClass.Indent(level) + "}\n");
+        //    }
+        public static void WriteJSONValueLine(StreamWriter outt, int level, ref bool first, string key, Object val) {
+            if (val != null) {
+                Gltf.WriteJSONLineEnding(outt, ref first);
+                outt.Write(GltfClass.Indent(level) + "\"" + key + "\": " + CreateJSONValue(val));
+            }
+        }
+
+        // Used to end the last line of output JSON. If there was something before, a comma is needed
+        public static void WriteJSONLineEnding(StreamWriter outt, ref bool first) {
+            if (first)
+                outt.Write("\n");
+            else
+                outt.Write(",\n");
+            first = false;
+        }
+
+        // Examines passed object and creates the correct form of a JSON value.
+        // Strings are closed in quotes, arrays get square bracketed, and numbers are stringified.
+        public static string CreateJSONValue(Object val) {
+            string ret = String.Empty;
+            if (val is string) {
+                ret = "\"" + val + "\"";
+            }
+            else if (val is OMV.Vector3) {
+                ret = GltfClass.Vector3ToJSONArray((OMV.Vector3)val);
+            }
+            else if (val is OMV.Quaternion) {
+                ret = GltfClass.QuaternionToJSONArray((OMV.Quaternion)val);
+            }
+            else if (val.GetType().IsArray) {
+                ret = " [ ";
+                Object[] values = (Object[])val;
+                bool first = true;
+                for (int ii = 0; ii < values.Length; ii++) {
+                    if (!first) ret += ",";
+                    first = false;
+                    ret += CreateJSONValue(values[ii]);
+                }
+                ret += " ]";
+            }
+            else {
+                ret = val.ToString();
+            }
+            return ret;
+        }
+
     }
 
     // =============================================================
@@ -379,31 +565,7 @@ namespace org.herbal3d.BasilOS {
             outt.Write("{");
             bool first = true;
             foreach (KeyValuePair<string, Object> kvp in this) {
-                if (first) {
-                    outt.Write("\n");
-                }
-                else {
-                    outt.Write(",\n");
-                }
-
-                if (kvp.Value is string) {
-                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": \"" + kvp.Value + "\"");
-                }
-                else if (kvp.Value.GetType().IsArray) {
-                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": [ ");
-                    Object[] values = (Object[])kvp.Value;
-                    bool first2 = true;
-                    for (int ii = 0; ii < values.Length; ii++) {
-                        if (!first2) outt.Write(",");
-                        first2 = false;
-                        outt.Write(values[ii].ToString());
-                    }
-                    outt.Write(" ]");
-                }
-                else {
-                    outt.Write(GltfClass.Indent(level) + "\"" + kvp.Key + "\": " + kvp.Value.ToString() + "");
-                }
-                first = false;
+                Gltf.WriteJSONValueLine(outt, level, ref first, kvp.Key, kvp.Value);
             }
             outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
@@ -439,14 +601,15 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(GltfClass.Indent(level) + "\"generator\": \"" + generator + "\",\n");
-            outt.Write(GltfClass.Indent(level) + "\"premultipliedAlpha\": \"" + premulitpliedAlpha + "\",\n");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "generator", generator);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "premultipliedAlpha", premulitpliedAlpha);
+            Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"profile\": ");
             profile.ToJSON(outt, level+1);
-            outt.Write(",\n");
-            outt.Write(GltfClass.Indent(level) + "\"version\": " + version.ToString() + "\n");
-            outt.Write("}\n");
+            Gltf.WriteJSONValueLine(outt, level, ref first, "version", version);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -474,14 +637,13 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            if (!String.IsNullOrEmpty(name))
-                outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
-
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
+            Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"nodes\": ");
             nodes.ToJSONArrayOfIDs(outt, level+1);
-
-            outt.Write(GltfClass.Indent(level) + "}\n");
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -539,21 +701,20 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            if (!String.IsNullOrEmpty(name))
-                outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
-            outt.Write(GltfClass.Indent(level) + "\"translation\": " + Vector3ToJSONArray(translation));
-            outt.Write(",\n");
-            outt.Write(GltfClass.Indent(level) + "\"scale\": " + Vector3ToJSONArray(scale));
-            outt.Write(",\n");
-            outt.Write(GltfClass.Indent(level) + "\"rotation\": " + QuaternionToJSONArray(rotation));
-            outt.Write(",\n");
+
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "translation", translation);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "scale", scale);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "rotation", rotation);
+            Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"children\": ");
             children.ToJSONArrayOfIDs(outt, level+1);
-            outt.Write(",\n");
+            Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"meshes\": ");
             meshes.ToJSONArrayOfIDs(outt, level+1);
-            outt.Write(" }");
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -575,6 +736,7 @@ namespace org.herbal3d.BasilOS {
         public GltfPrimitive primitives;
         public GltfAttributes attributes;
         public OMVR.Face underlyingMesh;
+        public ushort[] newIndices; // remapped indices posinting to global vertex list
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.meshes.Add(this);
             primitives = new GltfPrimitive(gltfRoot);
@@ -582,11 +744,12 @@ namespace org.herbal3d.BasilOS {
 
         public override void ToJSON(StreamWriter outt, int level) {
             outt.Write("{\n");
-            if (!String.IsNullOrEmpty(name))
-                outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
+            Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"primitives\": ");
             primitives.ToJSON(outt, level+1);
-            outt.Write(" }");
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -630,33 +793,30 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(GltfClass.Indent(level) + "\"mode\": " + mode.ToString() + ",\n");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "mode", mode);
+
             if (indices != null) {
-                outt.Write(GltfClass.Indent(level) + "\"indices\": \"" + indices.ID + "\",\n");
+                Gltf.WriteJSONValueLine(outt, level, ref first, "indices", indices.ID);
             }
             if (material != null) {
-                outt.Write(GltfClass.Indent(level) + "\"material\": \"" + material.ID + "\",\n");
+                Gltf.WriteJSONValueLine(outt, level, ref first, "material", material.ID);
             }
-            bool yesComma = false;
+            Gltf.WriteJSONLineEnding(outt, ref first);
+            bool first2 = true;
             outt.Write(GltfClass.Indent(level) + "\"attributes\": {\n");
             if (normals != null) {
-                outt.Write(GltfClass.Indent(level+1) + "\"NORMAL\": \"" + normals.ID + "\"\n");
-                yesComma = true;
+                Gltf.WriteJSONValueLine(outt, level+1, ref first2, "NORMAL", normals.ID);
             }
             if (position != null) {
-                if (yesComma) outt.Write(",");
-                outt.Write(GltfClass.Indent(level+1) + "\"POSITION\": \"" + position.ID + "\"\n");
-                yesComma = true;
+                Gltf.WriteJSONValueLine(outt, level+1, ref first2, "POSITION", position.ID);
             }
             if (texcoord != null) {
-                if (yesComma) outt.Write(",");
-                outt.Write(GltfClass.Indent(level+1) + "\"TEXCOORD_0\": \"" + texcoord.ID + "\"\n");
-                yesComma = true;
+                Gltf.WriteJSONValueLine(outt, level+1, ref first2, "TEXCOORD_0", texcoord.ID);
             }
-            outt.Write(GltfClass.Indent(level) + "}\n");
-
-            outt.Write(GltfClass.Indent(level) + " }");
+            outt.Write("\n" + GltfClass.Indent(level) + "}");
+            outt.Write("\n" + GltfClass.Indent(level) + " }");
         }
     }
 
@@ -698,18 +858,20 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            if (!String.IsNullOrEmpty(name))
-                outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
             if (values.Count > 0) {
+                Gltf.WriteJSONLineEnding(outt, ref first);
                 outt.Write(GltfClass.Indent(level) + "\"values\": ");
                 values.ToJSON(outt, level+1);
             }
             if (extensions != null && extensions.Count > 0) {
+                Gltf.WriteJSONLineEnding(outt, ref first);
                 outt.Write(GltfClass.Indent(level) + "\"extensions\": \"");
                 extensions.ToJSON(outt, level + 1);
             }
-            outt.Write(GltfClass.Indent(level) + " }");
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -727,13 +889,27 @@ namespace org.herbal3d.BasilOS {
     }
 
     public class GltfAccessor : GltfClass {
+        public GltfBufferView bufferView;
+        public int count;
+        public uint compoundType;
+        public string type;
+        public int byteOffset;
+        public int byteStride;
         public GltfAccessor(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.accessors.Add(this);
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(" }");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "bufferView", bufferView.ID);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "count", count);
+            if (compoundType != 0)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "compoundType", compoundType);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "type", type);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "byteOffset", byteOffset);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "byteStride", byteStride);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -751,13 +927,28 @@ namespace org.herbal3d.BasilOS {
     }
 
     public class GltfBuffer : GltfClass {
+        public byte[] bufferBytes;
+        public string type;
+        public string filename;
+        public string uri;
         public GltfBuffer(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.buffers.Add(this);
         }
 
+        public GltfBuffer(Gltf pRoot, string pID, string pType, string pFilename, string pUri) : base(pRoot, pID) {
+            type = pType;
+            filename = pFilename;
+            uri = pUri;
+            gltfRoot.buffers.Add(this);
+        }
+
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(" }");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "byteLength", bufferBytes.Length);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "type", "arraybuffer");
+            Gltf.WriteJSONValueLine(outt, level, ref first, "uri", uri);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -775,13 +966,25 @@ namespace org.herbal3d.BasilOS {
     }
 
     public class GltfBufferView : GltfClass {
+        public GltfBuffer buffer;
+        public int byteOffset;
+        public int byteLength;
+        public int target;
+
         public GltfBufferView(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.bufferViews.Add(this);
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(" }");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "buffer", buffer.ID);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "byteOffset", byteOffset);
+            if (byteLength > 0)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "byteLength", byteLength);
+            if (target > 0)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "target", target);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -804,6 +1007,15 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
+        /*
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
+            Gltf.WriteJSONLineEnding(outt, ref first);
+            outt.Write(GltfClass.Indent(level) + "\"nodes\": ");
+            nodes.ToJSONArrayOfIDs(outt, level+1);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
+            */
             outt.Write("{\n");
             outt.Write(" }");
         }
@@ -894,21 +1106,18 @@ namespace org.herbal3d.BasilOS {
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(GltfClass.Indent(level) + "\"target\": " + target + ",\n");
-            outt.Write(GltfClass.Indent(level) + "\"type\": " + type + ",\n");
-            outt.Write(GltfClass.Indent(level) + "\"format\": " + format + ",\n");
-            outt.Write(GltfClass.Indent(level) + "\"internalFormat\": " + internalFormat + "");
-            if (source != null) {
-                outt.Write(",\n");
-                outt.Write(GltfClass.Indent(level) + "\"source\": \"" + source.ID + "\"");
-            }
-            if (sampler != null) {
-                outt.Write(",\n");
-                outt.Write(GltfClass.Indent(level) + "\"sampler\": \"" + sampler.ID + "\"");
-            }
-            outt.Write("\n");
-            outt.Write(GltfClass.Indent(level) + "}");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "target", target);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "type", type);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "format", format);
+            if (internalFormat != 0)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "internalFormat", internalFormat);
+            if (source != null)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "source", source.ID);
+            if (sampler != null)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "sampler", sampler.ID);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -939,18 +1148,18 @@ namespace org.herbal3d.BasilOS {
     public class GltfImage : GltfClass {
         public OMV.UUID underlyingUUID;
         public string name;
-        public string URI;
+        public string uri;
+        public string filename;
         public GltfImage(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.images.Add(this);
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            if (!String.IsNullOrEmpty(name))
-                outt.Write(GltfClass.Indent(level) + "\"name\": \"" + name + "\",\n");
-            if (!String.IsNullOrEmpty(URI))
-                outt.Write(GltfClass.Indent(level) + "\"uri\": \"" + URI + "\",\n");
-            outt.Write(" }");
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
+            Gltf.WriteJSONValueLine(outt, level, ref first, "uri", uri);
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 
@@ -1005,24 +1214,18 @@ namespace org.herbal3d.BasilOS {
         public static string valTransparent = "transparent";  // whether the surface has transparency ('true' or 'false;)
 
         public GltfExtension(Gltf pRoot, string pID) : base(pRoot, pID) {
+            pRoot.UsingExtension(pID);
             values = new GltfAttributes();
         }
 
-        public GltfExtension MaterialsCommon(Gltf pRoot) {
-            GltfExtension ext = new GltfExtension(pRoot, "KHR_materials_common");
-            ext.technique = "COMMON";
-            return ext;
-        }
-
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            if (!String.IsNullOrEmpty(technique))
-                outt.Write(GltfClass.Indent(level) + "\"technique\": \"" + technique + "\",\n");
-
+            outt.Write("{");
+            bool first = true;
+            Gltf.WriteJSONValueLine(outt, level, ref first, "technique", technique);
+            Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"values\": ");
             values.ToJSON(outt, level+1);
-
-            outt.Write(GltfClass.Indent(level) + "}\n");
+            outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
     }
 

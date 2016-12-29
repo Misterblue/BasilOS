@@ -508,7 +508,7 @@ namespace org.herbal3d.BasilOS {
 
         // Build the GLTF structures from the reorganized scene
         private Gltf ConvertReorgSceneToGltf(ReorganizedScene reorgScene) {
-            Gltf gltf = new Gltf();
+            Gltf gltf = new Gltf(m_log);
 
             GltfScene gScene = new GltfScene(gltf, reorgScene.regionID);
             gScene.name = reorgScene.regionID;
@@ -533,13 +533,21 @@ namespace org.herbal3d.BasilOS {
             gltf.BuildPrimitives(CreateAssetURI);
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
-            gltf.BuildBuffers();
+            gltf.BuildBuffers(CreateAssetURI);
             
             return gltf;
         }
 
         private string CreateAssetURI(string type, OMV.UUID uuid) {
-            return "./" + uuid.ToString() + ".png";
+            // TODO: Make this specify where the asset would really be
+            string ret = "";
+            if (type == Gltf.MakeAssetURITypeImage)
+                ret = "./" + uuid.ToString() + ".png";
+            if (type == Gltf.MakeAssetURITypeBuff)
+                ret = "./" + uuid.ToString() + ".bin";
+            if (type == Gltf.MakeAssetURITypeMesh)
+                ret = "./" + uuid.ToString() + ".mesh";
+            return ret;
         }
 
         private void AddNodeToGltf(Gltf gltf, GltfScene containingScene, EntityGroup eg) {

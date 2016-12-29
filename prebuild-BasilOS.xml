@@ -27,7 +27,6 @@
       <Reference name="OpenSim.Services.Interfaces"/>
       <Reference name="OpenSim.Region.Framework"/>
 
-      <Reference name="Newtonsoft.Json" path="../libs"/>
       <Reference name="RSG.Promise" path="../libs"/>
 
       <Reference name="Nini" path="../../../bin/"/>
