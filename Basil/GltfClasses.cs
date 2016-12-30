@@ -238,7 +238,7 @@ namespace org.herbal3d.BasilOS {
         public const string MakeAssetURITypeBuff = "buff";      // binary buffer
 
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
-        //   the meshes and create the Buffers, BufferViews, and Accessors.
+        //   the meshes and create the Primitives, Materials, and Images.
         // Called before calling ToJSON().
         public void BuildPrimitives(MakeAssetURI makeAssetURI) {
             meshes.ForEach(mesh => {
@@ -286,18 +286,12 @@ namespace org.herbal3d.BasilOS {
         // Meshes with OMVR.Faces have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
-        private class VertRef {
-            public ushort ind;
-            public OMVR.Vertex vert;
-            public VertRef(ushort pInd, OMVR.Vertex pVert) {
-                ind = pInd;
-                vert = pVert;
-            }
-        }
         public void BuildBuffers(MakeAssetURI makeAssetURI) {
+            
+            // Pass over all the vertices in all the meshes and collect common vertices into 'vertexCollection'
             int numMeshes = 0;
             int numVerts = 0;
-            Dictionary<OMVR.Vertex, VertRef> vertexIndex = new Dictionary<OMVR.Vertex, VertRef>();
+            Dictionary<OMVR.Vertex, ushort> vertexIndex = new Dictionary<OMVR.Vertex, ushort>();
             List<OMVR.Vertex> vertexCollection = new List<OMVR.Vertex>();
             ushort vertInd = 0;
             meshes.ForEach(mesh => {
@@ -306,16 +300,9 @@ namespace org.herbal3d.BasilOS {
                 face.Vertices.ForEach(vert => {
                     numVerts++;
                     if (!vertexIndex.ContainsKey(vert)) {
-                        vertexIndex.Add(vert, new VertRef(vertInd, vert));
+                        vertexIndex.Add(vert, vertInd);
                         vertexCollection.Add(vert);
                         vertInd++;
-                    }
-                    else {
-                        // check to make sure there are no collisions in the hash code
-                        if (vert != vertexIndex[vert].vert) {
-                            m_log.ErrorFormat("{0} BuildBuffers: hash collision. firstVert={2}, newVert={3}",
-                                LogHeader, vertexIndex[vert].vert, vert);
-                        }
                     }
                 });
             });
@@ -323,7 +310,8 @@ namespace org.herbal3d.BasilOS {
             m_log.DebugFormat("{0} BuildBuffers: total vertices = {1}", LogHeader, numVerts);
             m_log.DebugFormat("{0} BuildBuffers: total unique vertices = {1}", LogHeader, vertInd);
 
-            // Remap all the indices to the new, compacted vertex collection
+            // Remap all the indices to the new, compacted vertex collection.
+            //     mesh.underlyingMesh.face to mesh.newIndices
             int numIndices = 0;
             meshes.ForEach(mesh => {
                 OMVR.Face face = mesh.underlyingMesh;
@@ -331,7 +319,7 @@ namespace org.herbal3d.BasilOS {
                 ushort[] newIndices = new ushort[face.Indices.Count];
                 for (int ii = 0; ii < face.Indices.Count; ii++) {
                     OMVR.Vertex aVert = face.Vertices[face.Indices[ii]];
-                    newIndices[ii] = vertexIndex[aVert].ind;
+                    newIndices[ii] = vertexIndex[aVert];
                 }
                 mesh.newIndices = newIndices;
             });
@@ -357,6 +345,7 @@ namespace org.herbal3d.BasilOS {
             binVerticesView.byteOffset = sizeofIndices;
             binVerticesView.byteLength = sizeofVertices;
 
+            // Copy the vertices into the output binary buffer 
             // Buffer.BlockCopy only moves primitives. Copy the vertices into a float array.
             float[] floatVertexRemapped = new float[vertexCollection.Count * sizeof(float) * 8];
             int jj = 0;
@@ -370,9 +359,10 @@ namespace org.herbal3d.BasilOS {
                 floatVertexRemapped[jj++] = vert.TexCoord.X;
                 floatVertexRemapped[jj++] = vert.TexCoord.Y;
             });
-
             Buffer.BlockCopy(floatVertexRemapped, 0, binBuffRaw, sizeofIndices, sizeofVertices);
 
+            // For each mesh, copy the indices into the binary output buffer and create the accessors
+            //    that point from the mesh into the binary info.
             int indicesOffset = 0;
             meshes.ForEach(mesh => {
                 Buffer.BlockCopy(mesh.newIndices, 0, binBuffRaw, indicesOffset, mesh.newIndices.Length * sizeof(ushort));
@@ -410,7 +400,6 @@ namespace org.herbal3d.BasilOS {
                 mesh.primitives.normals = normalsAccessor;
                 mesh.primitives.texcoord = UVAccessor;
             });
-
         }
 
         public void ToJSON(StreamWriter outt) {
@@ -495,6 +484,9 @@ namespace org.herbal3d.BasilOS {
 
             outt.Write("}\n");
         }
+
+        //====================================================================
+        // Useful routines for creating the JSON output
 
         // Used to output lines of JSON values. Used in the pattern:
         //    public void ToJSON(StreamWriter outt, int level) {
