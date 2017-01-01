@@ -206,7 +206,9 @@ namespace org.herbal3d.BasilOS {
                         Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
 
                         // Scan through all the textures and convert them into PNGs for the Gltf scene
-                        ExportTexturesForGltf(reorgScene, m_params.GltfTargetDir);
+                        if (m_params.ExportTextures) {
+                            ExportTexturesForGltf(gltf, reorgScene, assetFetcher, m_params.GltfTargetDir);
+                        }
 
                         // Write out the Gltf information
                         ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
@@ -502,7 +504,10 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
-        private void ExportTexturesForGltf(ReorganizedScene reorgScene, string targetDir) {
+        private void ExportTexturesForGltf(Gltf gltf, ReorganizedScene reorgScene, IAssetFetcherWrapper assetFetcher, string targetDir) {
+            gltf.images.ForEach(img => {
+                img.underlyingUUID
+            });
             return;
         }
 
@@ -538,16 +543,27 @@ namespace org.herbal3d.BasilOS {
             return gltf;
         }
 
-        private string CreateAssetURI(string type, OMV.UUID uuid) {
-            // TODO: Make this specify where the asset would really be
-            string ret = "";
-            if (type == Gltf.MakeAssetURITypeImage)
-                ret = "./" + uuid.ToString() + ".png";
-            if (type == Gltf.MakeAssetURITypeBuff)
-                ret = "./" + uuid.ToString() + ".bin";
-            if (type == Gltf.MakeAssetURITypeMesh)
-                ret = "./" + uuid.ToString() + ".mesh";
-            return ret;
+        // When calling into the Gltf routines to build structures, there need to be URI's 
+        //     added to the structures. This routine is called to generate the storage filename
+        //     and reference URI for the item 'info' of type 'type'.
+        private void CreateAssetURI(string type, string info, out string filename, out string uri) {
+            // TODO: make this be smarter.
+            string fname = "";
+            string uuri = "";
+            if (type == Gltf.MakeAssetURITypeImage) {
+                uri = "./" +  info + ".png";
+                fname = "./" +  info + ".png";
+            }
+            if (type == Gltf.MakeAssetURITypeBuff) {
+                uri = "./" +  info + ".bin";
+                fname = "./" +  info + ".bin";
+            }
+            if (type == Gltf.MakeAssetURITypeMesh) {
+                uri = "./" + info + ".mesh";
+                fname = "./" + info + ".mesh";
+            }
+            filename = fname;
+            uri = uuri;
         }
 
         private void AddNodeToGltf(Gltf gltf, GltfScene containingScene, EntityGroup eg) {
@@ -625,6 +641,7 @@ namespace org.herbal3d.BasilOS {
                 using (StreamWriter outt = File.CreateText(gltfFilename)) {
                     gltf.ToJSON(outt);
                 }
+                gltf.WriteBinaryFiles(targetDir);
             }
         }
 

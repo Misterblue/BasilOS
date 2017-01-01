@@ -232,7 +232,8 @@ namespace org.herbal3d.BasilOS {
 
         // Function called below to create a URI from an asset ID.
         // 'type' may be one of 'image', 'mesh', ?
-        public delegate string MakeAssetURI(string type, OMV.UUID uuid);
+        // public delegate string MakeAssetURI(string type, OMV.UUID uuid);
+        public delegate void MakeAssetURI(string type, string info, out string filename, out string uri);
         public const string MakeAssetURITypeImage = "image";    // image of type PNG
         public const string MakeAssetURITypeMesh = "mesh";
         public const string MakeAssetURITypeBuff = "buff";      // binary buffer
@@ -270,7 +271,7 @@ namespace org.herbal3d.BasilOS {
                             if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
                                 theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
                                 theImage.underlyingUUID = texID;
-                                theImage.uri = makeAssetURI(MakeAssetURITypeImage, texID);
+                                makeAssetURI(MakeAssetURITypeImage, texID.ToString(), out theImage.filename, out theImage.uri);
                             }
                             theTexture.source = theImage;
                         }
@@ -333,7 +334,7 @@ namespace org.herbal3d.BasilOS {
 
             byte[] binBuffRaw = new byte[sizeofIndices + sizeofVertices];
             GltfBuffer binBuff = new GltfBuffer(gltfRoot, "buffer01");
-            binBuff.filename = makeAssetURI(MakeAssetURITypeBuff, OMV.UUID.Random());
+            makeAssetURI(MakeAssetURITypeBuff, binBuff.ID, out binBuff.filename, out binBuff.uri);
             binBuff.bufferBytes = binBuffRaw;
 
             GltfBufferView binIndicesView = new GltfBufferView(gltfRoot, "bufferViewIndices");
@@ -483,6 +484,14 @@ namespace org.herbal3d.BasilOS {
             outt.Write("\n");
 
             outt.Write("}\n");
+        }
+
+        // Write the binary files into the specified target directory
+        public void WriteBinaryFiles(string targetDir) {
+            buffers.ForEach(buff => {
+                string outFilename = BasilModule.JoinFilePieces(targetDir, buff.filename);
+                File.WriteAllBytes(targetDir, buff.bufferBytes);
+            });
         }
 
         //====================================================================

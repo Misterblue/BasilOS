@@ -38,6 +38,7 @@ namespace org.herbal3d.BasilOS {
         public int WebSocketPort;       // port to open WebSocket listener
 
         public string GltfTargetDir;    // where to store all the Gltf files
+        public bool ExportTextures;     // also export textures to the target dir
 
         public bool LogConversionStats; // output numbers about number of entities converted
         public bool LogDetailedSharedFaceStats; // output numbers about face mesh sharing
@@ -73,6 +74,8 @@ namespace org.herbal3d.BasilOS {
                 34343 ),
             new ParameterDefn<string>("GltfTargetDir", "Where to store all the Gltf files",
                 "./gltf" ),
+            new ParameterDefn<bool>("ExportTextures", "Convert textures to PNGs and export to target dir",
+                true ),
             new ParameterDefn<bool>("LogConversionStats", "output numbers about number of entities converted",
                 true ),
             new ParameterDefn<bool>("LogDetailedSharedFaceStats", "output numbers about face mesh sharing",
