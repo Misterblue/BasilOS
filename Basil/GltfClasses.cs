@@ -737,6 +737,7 @@ namespace org.herbal3d.BasilOS {
         public GltfPrimitive primitives;
         public GltfAttributes attributes;
         public OMVR.Face underlyingMesh;
+        public ExtendedPrim underlyingPrim;
         public ushort[] newIndices; // remapped indices posinting to global vertex list
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.meshes.Add(this);

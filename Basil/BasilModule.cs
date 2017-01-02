@@ -369,9 +369,8 @@ namespace org.herbal3d.BasilOS {
             // Go through all the static items and make a list of all the meshes with similar textures
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
             reorgScene.staticEntities.ForEachExtendedPrim(ep => {
-                int numFaces = ep.facetedMesh.Faces.Count;
-                // for each face of the prim, see if it's a shared texture
                 OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
+                int numFaces = ep.facetedMesh.Faces.Count;
                 for (int ii = 0; ii < numFaces; ii++) {
                     OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
                     if (tef == null) {
@@ -618,6 +617,7 @@ namespace org.herbal3d.BasilOS {
                 string meshID = ep.SOP.UUID.ToString() + "_face" + numFace.ToString();
                 GltfMesh mesh = new GltfMesh(pGltf, meshID);
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Face. id={1}", LogHeader, meshID);
+                mesh.underlyingPrim = ep;
                 mesh.underlyingMesh = face;
                 ret.meshes.Add(mesh);
                 numFace++;
