@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Drawing;
 
 using OMV = OpenMetaverse;
 using OMVS = OpenMetaverse.StructuredData;
@@ -21,6 +22,10 @@ namespace org.herbal3d.BasilOS {
         public SceneObjectPart SOP { get; set; }
         public OMV.Primitive primitive { get; set; }
         public OMVR.FacetedMesh facetedMesh { get; set; }
+        // Texture information for the faces
+        public Dictionary<int, OMV.Primitive.TextureEntryFace> faceTextures { get; set; }
+        // Images for a fae if it is specified
+        public Dictionary<int, Image> faceImages { get; set; }
 
         public ExtendedPrim() {
         }
@@ -30,6 +35,8 @@ namespace org.herbal3d.BasilOS {
             SOP = pSOP;
             primitive = pPrim;
             facetedMesh = pFMesh;
+            faceTextures = new Dictionary<int, OMV.Primitive.TextureEntryFace>();
+            faceImages = new Dictionary<int, Image>();
         }
 
         public override int GetHashCode() {

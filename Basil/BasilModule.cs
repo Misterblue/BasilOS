@@ -250,6 +250,7 @@ namespace org.herbal3d.BasilOS {
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Then(ePrimGroup => {
+                        AddTexturesAndImagesToExtendedPrims(ePrimGroup, assetFetcher);
                         // Preform per face texture adjustments (update UV for repeat and offset)
                         AdjustTextureCoords(aPrim, ePrimGroup, mesher);
                         lock (meshes) {
@@ -268,6 +269,16 @@ namespace org.herbal3d.BasilOS {
                     });
             }
             return prom;
+        }
+
+        /// <summary>
+        /// Scan through all the ExtendedPrims and update each with pointers to the material/texture information
+        /// for the mesh. Additionally, read in the referenced images so they can be scanned for transparency
+        /// and otherwise processed (used to create atlases, etc).
+        /// </summary>
+        /// <param name="epGroup">Collections of meshes to update</param>
+        /// <param name="assetFetcher">Fetcher for getting images, etc</param>
+        private void AddTexturesAndImagesToExtendedPrims(ExtendedPrimGroup epGroup, IAssetFetcherWrapper assetFetcher) {
         }
 
         /// <summary>
