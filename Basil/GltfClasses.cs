@@ -333,7 +333,12 @@ namespace org.herbal3d.BasilOS {
             //    updated indices in GltfMesh.newIndices.
 
             byte[] binBuffRaw = new byte[sizeofIndices + sizeofVertices];
-            GltfBuffer binBuff = new GltfBuffer(gltfRoot, "buffer01");
+            string buffFilename = null;
+            string buffURI = null;
+            string buffName = String.Format("buffer{0:000}", buffers.Count + 1);
+            makeAssetURI(Gltf.MakeAssetURITypeBuff, buffName, out buffFilename, out buffURI);
+            // m_log.DebugFormat("{0} BuildBuffers: make buffer: name={1}, filename={2}, uri={3}", LogHeader, buffName, buffFilename, buffURI);
+            GltfBuffer binBuff = new GltfBuffer(gltfRoot, buffName, "arraybuffer", buffFilename, buffURI);
             makeAssetURI(MakeAssetURITypeBuff, binBuff.ID, out binBuff.filename, out binBuff.uri);
             binBuff.bufferBytes = binBuffRaw;
 
@@ -490,7 +495,8 @@ namespace org.herbal3d.BasilOS {
         public void WriteBinaryFiles(string targetDir) {
             buffers.ForEach(buff => {
                 string outFilename = BasilModule.JoinFilePieces(targetDir, buff.filename);
-                File.WriteAllBytes(targetDir, buff.bufferBytes);
+                // m_log.DebugFormat("{0} WriteBinaryFiles: filename={1}", LogHeader, outFilename);
+                File.WriteAllBytes(outFilename, buff.bufferBytes);
             });
         }
 

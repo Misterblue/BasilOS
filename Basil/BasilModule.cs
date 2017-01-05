@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using Mono.Addins;
@@ -162,8 +163,8 @@ namespace org.herbal3d.BasilOS {
                 return;
             }
 
-            m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, m_scene={2}", LogHeader,
-                        SceneManager.Instance.CurrentScene.Name, m_scene.Name);
+            // m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, m_scene={2}", LogHeader,
+            //             SceneManager.Instance.CurrentScene.Name, m_scene.Name);
 
             if (SceneManager.Instance.CurrentScene.Name == m_scene.Name) {
 
@@ -214,7 +215,7 @@ namespace org.herbal3d.BasilOS {
 
         // For each of the SceneObjectGroups in the scene, create an EntityGroup with everything converted to meshes
         private void ConvertEntitiesToMeshes(List<EntityGroup> allSOGs, IAssetFetcherWrapper assetFetcher, BasilStats stats) {
-            m_log.DebugFormat("{0} ConvertEntitiesToMeshes:", LogHeader);
+            // m_log.DebugFormat("{0} ConvertEntitiesToMeshes:", LogHeader);
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
                 // TODO: This should be a Promise.All()
@@ -234,7 +235,7 @@ namespace org.herbal3d.BasilOS {
         // Convert all prims in SOG into meshes and return the mesh group.
         private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
                         IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
-            m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
+            // m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
             var prom = new Promise<EntityGroup>();
 
             EntityGroup meshes = new EntityGroup(sog);
@@ -258,6 +259,7 @@ namespace org.herbal3d.BasilOS {
                         }
                         // can't tell what order the prims are completed in so wait until they are all meshed
                         // TODO: change the completion logic to use Promise.All()
+                        // m_log.DebugFormat("{0}: ConvertSOG: id={1}, totalChildren={2}", LogHeader, sog.UUID, totalChildren);
                         if (--totalChildren <= 0) {
                             prom.Resolve(meshes);
                         }
@@ -276,7 +278,7 @@ namespace org.herbal3d.BasilOS {
         /// <param name="pMesher"></param>
         private void UpdateTextureInfo(ExtendedPrimGroup epGroup, OMV.Primitive pPrim,
                                     IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
-            m_log.DebugFormat("{0}: UpdateTextureInfo", LogHeader);
+            // m_log.DebugFormat("{0}: UpdateTextureInfo", LogHeader);
             if (epGroup.ContainsKey(PrimGroupType.lod1)) {
                 ExtendedPrim ep = epGroup[PrimGroupType.lod1];
                 for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
@@ -291,16 +293,46 @@ namespace org.herbal3d.BasilOS {
                     // If the texture includes an image, read it in.
                     OMV.UUID texID = tef.TextureID;
                     if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
-                        assetFetcher.FetchRawAsset(new EntityHandle(texID))
-                        .Then(theData => {
-                            ep.faceImages.Add(ii, CSJ2K.J2kImage.FromBytes(theData));
-                        });
+                        GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
+                            .Then(theImage => {
+                                ep.faceImages.Add(ii, theImage);
+                            })
+                            .Catch(e => {
+                                m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
+                            });
                     }
 
                     // While we're in the neighborhood, map the texture coords based on the prim information
                     pMesher.UpdateCoords(face, tef);
                 }
             }
+        }
+
+        // Keep a cache if image data and either fetch and Image or return a cached instance.
+        private Dictionary<int, Image> textureCache = new Dictionary<int, Image>();
+        private Promise<Image> GetUniqueTextureData(EntityHandle textureHandle, IAssetFetcherWrapper assetFetcher) {
+
+            Promise<Image> prom = new Promise<Image>();
+            int hash = textureHandle.GetHashCode();
+            if (textureCache.ContainsKey(hash)) {
+                // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, returning known", LogHeader, textureHandle, hash);
+                prom.Resolve(textureCache[hash]);
+            }
+            else {
+                assetFetcher.FetchRawAsset(textureHandle)
+                .Then(theData => {
+                    try {
+                        Image theImage = CSJ2K.J2kImage.FromBytes(theData);
+                        textureCache.Add(textureHandle.GetHashCode(), theImage);
+                        // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", LogHeader, textureHandle, hash);
+                        prom.Resolve(theImage);
+                    }
+                    catch (Exception e) {
+                        prom.Reject(new Exception(String.Format("Texture conversion failed. handle={0}. e={1}", textureHandle, e)));
+                    }
+                });
+            }
+            return prom;
         }
 
         // Gather statistics
@@ -376,8 +408,8 @@ namespace org.herbal3d.BasilOS {
                     }
                 });
             });
-            m_log.DebugFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
-            m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
+            // m_log.DebugFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
+            // m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
 
             // Go through all the static items and make a list of all the meshes with similar textures
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
@@ -554,20 +586,21 @@ namespace org.herbal3d.BasilOS {
         // When calling into the Gltf routines to build structures, there need to be URI's 
         //     added to the structures. This routine is called to generate the storage filename
         //     and reference URI for the item 'info' of type 'type'.
+        // 'info' is what the asset wants to be called: a uuid for textures, mesh name, or buffer name.
         private void CreateAssetURI(string type, string info, out string filename, out string uri) {
             // TODO: make this be smarter.
             string fname = "";
             string uuri = "";
             if (type == Gltf.MakeAssetURITypeImage) {
-                uri = "./" +  info + ".png";
+                uuri = "./" +  info + ".png";
                 fname = "./" +  info + ".png";
             }
             if (type == Gltf.MakeAssetURITypeBuff) {
-                uri = "./" +  info + ".bin";
-                fname = "./" +  info + ".bin";
+                uuri = "./" +  m_scene.Name + "_" + info + ".bin";
+                fname = "./" +  m_scene.Name + "_" + info + ".bin";
             }
             if (type == Gltf.MakeAssetURITypeMesh) {
-                uri = "./" + info + ".mesh";
+                uuri = "./" + info + ".mesh";
                 fname = "./" + info + ".mesh";
             }
             filename = fname;

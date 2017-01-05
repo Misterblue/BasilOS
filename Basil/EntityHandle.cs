@@ -31,7 +31,7 @@ namespace org.herbal3d.BasilOS {
     // All filename, type, and version conversions are done here.
     //
     // At the moment, an entity just has a UUID
-    public class EntityHandle {
+    public class EntityHandle : IEqualityComparer<EntityHandle> {
 
         OMV.UUID m_uuid;
 
@@ -50,6 +50,36 @@ namespace org.herbal3d.BasilOS {
 
         public override string ToString() {
             return m_uuid.ToString();
+        }
+
+        // IComparable
+        public int CompareTo(object obj) {
+            int ret = 0;
+            EntityHandle other = obj as EntityHandle;
+            if (other == null) {
+                throw new ArgumentException("CompareTo in EntityHandle: other type not EntityHandle");
+            }
+            if (this.m_uuid != other.m_uuid) {
+                string thisOne = this.m_uuid.ToString();
+                string otherOne = this.m_uuid.ToString();
+                ret = thisOne.CompareTo(otherOne);
+            }
+            return ret;
+        }
+
+        // System.Object.GetHashCode()
+        public override int GetHashCode() {
+            return m_uuid.GetHashCode();
+        }
+
+        // IEqualityComparer.Equals
+        public bool Equals(EntityHandle x, EntityHandle y) {
+            return x.m_uuid.CompareTo(y.m_uuid) == 0;
+        }
+
+        // IEqualityComparer.GetHashCode
+        public int GetHashCode(EntityHandle obj) {
+            return obj.m_uuid.GetHashCode();
         }
     }
 }
