@@ -29,6 +29,7 @@
 
       <Reference name="RSG.Promise" path="../libs"/>
 
+      <Reference name="CSJ2K" path="../../../bin/"/>
       <Reference name="Nini" path="../../../bin/"/>
       <Reference name="log4net" path="../../../bin/"/>
 

@@ -116,15 +116,10 @@ namespace org.herbal3d.BasilOS {
         private class MeshWithMaterial {
             public ExtendedPrim containingPrim;
             public int faceIndex;
-            public OMV.Primitive.TextureEntry textureEntry;
-            public OMV.Primitive.TextureEntryFace textureEntryFace;
 
-            public MeshWithMaterial(ExtendedPrim pContainingPrim, int pFaceIndex,
-                                    OMV.Primitive.TextureEntry pTextureEntry, OMV.Primitive.TextureEntryFace pTextureEntryFace) {
+            public MeshWithMaterial(ExtendedPrim pContainingPrim, int pFaceIndex) {
                 containingPrim = pContainingPrim;
                 faceIndex = pFaceIndex;
-                textureEntry = pTextureEntry;
-                textureEntryFace = pTextureEntryFace;
             }
         }
 
@@ -167,8 +162,8 @@ namespace org.herbal3d.BasilOS {
                 return;
             }
 
-            // m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, m_scene={2}", LogHeader,
-            //             SceneManager.Instance.CurrentScene.Name, m_scene.Name);
+            m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, m_scene={2}", LogHeader,
+                        SceneManager.Instance.CurrentScene.Name, m_scene.Name);
 
             if (SceneManager.Instance.CurrentScene.Name == m_scene.Name) {
 
@@ -219,19 +214,19 @@ namespace org.herbal3d.BasilOS {
 
         // For each of the SceneObjectGroups in the scene, create an EntityGroup with everything converted to meshes
         private void ConvertEntitiesToMeshes(List<EntityGroup> allSOGs, IAssetFetcherWrapper assetFetcher, BasilStats stats) {
+            m_log.DebugFormat("{0} ConvertEntitiesToMeshes:", LogHeader);
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
                 // TODO: This should be a Promise.All()
                 m_scene.ForEachSOG(sog => {
                     ConvertSOG(sog, assetMesher, assetFetcher, stats)
-                        .Then(ePrimGroup => {
-                            allSOGs.Add(ePrimGroup);
-                        })
                         .Catch(e => {
                             m_log.ErrorFormat("{0} Error converting SOG. UUID={1}: {2}", LogHeader, sog.UUID, e);
+                        })
+                        .Then(ePrimGroup => {
+                            allSOGs.Add(ePrimGroup);
                         }
                     ); 
-
                 });
             }
         }
@@ -239,7 +234,7 @@ namespace org.herbal3d.BasilOS {
         // Convert all prims in SOG into meshes and return the mesh group.
         private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
                         IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
-            // m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
+            m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
             var prom = new Promise<EntityGroup>();
 
             EntityGroup meshes = new EntityGroup(sog);
@@ -249,10 +244,14 @@ namespace org.herbal3d.BasilOS {
 
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
+                    .Catch(e => {
+                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
+                        prom.Reject(e);
+                    })
                     .Then(ePrimGroup => {
-                        AddTexturesAndImagesToExtendedPrims(ePrimGroup, assetFetcher);
-                        // Preform per face texture adjustments (update UV for repeat and offset)
-                        AdjustTextureCoords(aPrim, ePrimGroup, mesher);
+                        // The prims in the group need to be decorated with texture/image information
+                        UpdateTextureInfo(ePrimGroup, aPrim, assetFetcher, mesher);
+
                         lock (meshes) {
                             // m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}", LogHeader, sop.UUID);
                             meshes.Add(ePrimGroup);
@@ -262,10 +261,6 @@ namespace org.herbal3d.BasilOS {
                         if (--totalChildren <= 0) {
                             prom.Resolve(meshes);
                         }
-                    })
-                    .Catch(e => {
-                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
-                        prom.Reject(e);
                     });
             }
             return prom;
@@ -278,25 +273,32 @@ namespace org.herbal3d.BasilOS {
         /// </summary>
         /// <param name="epGroup">Collections of meshes to update</param>
         /// <param name="assetFetcher">Fetcher for getting images, etc</param>
-        private void AddTexturesAndImagesToExtendedPrims(ExtendedPrimGroup epGroup, IAssetFetcherWrapper assetFetcher) {
-        }
-
-        /// <summary>
-        /// Each of the face textures casn be repeated and/or offset. Apply those operations to the UV
-        /// coordinates for the faces.
-        /// </summary>
-        /// <param name="pPrim"></param>
-        /// <param name="pPrimGroup"></param>
         /// <param name="pMesher"></param>
-        private void AdjustTextureCoords(OMV.Primitive pPrim, ExtendedPrimGroup pPrimGroup, PrimToMesh pMesher) {
-            // each of the lod versions need adjusting
-            foreach (ExtendedPrim ep in pPrimGroup.Values) {
+        private void UpdateTextureInfo(ExtendedPrimGroup epGroup, OMV.Primitive pPrim,
+                                    IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
+            m_log.DebugFormat("{0}: UpdateTextureInfo", LogHeader);
+            if (epGroup.ContainsKey(PrimGroupType.lod1)) {
+                ExtendedPrim ep = epGroup[PrimGroupType.lod1];
                 for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
+                    OMVR.Face face = ep.facetedMesh.Faces[ii];
                     OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
                     if (tef == null) {
                         tef = pPrim.Textures.DefaultTexture;
                     }
-                    pMesher.UpdateCoords(ep.facetedMesh.Faces[ii], tef);
+                    // Add the texture information for the face for later reference
+                    ep.faceTextures.Add(ii, tef);
+
+                    // If the texture includes an image, read it in.
+                    OMV.UUID texID = tef.TextureID;
+                    if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
+                        assetFetcher.FetchRawAsset(new EntityHandle(texID))
+                        .Then(theData => {
+                            ep.faceImages.Add(ii, CSJ2K.J2kImage.FromBytes(theData));
+                        });
+                    }
+
+                    // While we're in the neighborhood, map the texture coords based on the prim information
+                    pMesher.UpdateCoords(face, tef);
                 }
             }
         }
@@ -384,15 +386,14 @@ namespace org.herbal3d.BasilOS {
                 int numFaces = ep.facetedMesh.Faces.Count;
                 for (int ii = 0; ii < numFaces; ii++) {
                     OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
-                    if (tef == null) {
-                        tef = tex.DefaultTexture;
-                    }
-                    int hashCode = tef.GetHashCode();
-                    reorgScene.similarFaces.AddSimilarFace(hashCode, new MeshWithMaterial(ep, ii, tex, tef));
+                    if (tef != null) {
+                        int hashCode = tef.GetHashCode();
+                        reorgScene.similarFaces.AddSimilarFace(hashCode, new MeshWithMaterial(ep, ii));
 
-                    // Also create a collection of all the materails being used in the scene
-                    if (!reorgScene.faceMaterials.ContainsKey(hashCode)) {
-                        reorgScene.faceMaterials.Add(hashCode, tef);
+                        // Also create a collection of all the materails being used in the scene
+                        if (!reorgScene.faceMaterials.ContainsKey(hashCode)) {
+                            reorgScene.faceMaterials.Add(hashCode, tef);
+                        }
                     }
                 }
             });
@@ -402,13 +403,12 @@ namespace org.herbal3d.BasilOS {
                 OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
                 int numFaces = ep.facetedMesh.Faces.Count;
                 for (int ii = 0; ii < numFaces; ii++) {
-                    OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
-                    if (tef == null) {
-                        tef = tex.DefaultTexture;
-                    }
-                    int hashCode = tef.GetHashCode();
-                    if (!reorgScene.faceMaterials.ContainsKey(hashCode)) {
-                        reorgScene.faceMaterials.Add(hashCode, tef);
+                    OMV.Primitive.TextureEntryFace tef = ep.faceTextures[ii];
+                    if (tef != null) {
+                        int hashCode = tef.GetHashCode();
+                        if (!reorgScene.faceMaterials.ContainsKey(hashCode)) {
+                            reorgScene.faceMaterials.Add(hashCode, tef);
+                        }
                     }
                 }
             });
@@ -515,9 +515,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         private void ExportTexturesForGltf(Gltf gltf, ReorganizedScene reorgScene, IAssetFetcherWrapper assetFetcher, string targetDir) {
-            gltf.images.ForEach(img => {
-                img.underlyingUUID
-            });
+            // TODO:
             return;
         }
 
