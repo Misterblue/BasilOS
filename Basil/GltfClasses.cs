@@ -494,7 +494,7 @@ namespace org.herbal3d.BasilOS {
         // Write the binary files into the specified target directory
         public void WriteBinaryFiles(string targetDir) {
             buffers.ForEach(buff => {
-                string outFilename = BasilModule.JoinFilePieces(targetDir, buff.filename);
+                string outFilename = buff.filename;
                 // m_log.DebugFormat("{0} WriteBinaryFiles: filename={1}", LogHeader, outFilename);
                 File.WriteAllBytes(outFilename, buff.bufferBytes);
             });

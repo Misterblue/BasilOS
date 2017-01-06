@@ -141,7 +141,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         // A structure to hold all the information about the reorganized scene
-        private class ReorganizedScene {
+        private class ReorganizedScene : IDisposable {
             public string regionID;
             public EntityGroupList nonStaticEntities = new EntityGroupList();
             public EntityGroupList staticEntities = new EntityGroupList();
@@ -151,6 +151,14 @@ namespace org.herbal3d.BasilOS {
 
             public ReorganizedScene(string pRegionID) {
                 regionID = pRegionID;
+            }
+
+            public void Dispose() {
+                nonStaticEntities.Clear();
+                staticEntities.Clear();
+                similarFaces.Clear();
+                rebuiltFaceEntities.Clear();
+                faceMaterials.Clear();
             }
         }
 
@@ -168,47 +176,52 @@ namespace org.herbal3d.BasilOS {
 
             if (SceneManager.Instance.CurrentScene.Name == m_scene.Name) {
 
-                List<EntityGroup> allSOGs = new List<EntityGroup>();
-                ReorganizedScene reorgScene = new ReorganizedScene("region_" +m_scene.Name.ToLower());
+                using (ReorganizedScene reorgScene = new ReorganizedScene("region_" + m_scene.Name.ToLower())) {
 
-                using (BasilStats stats = new BasilStats(m_scene, m_log)) {
+                    using (BasilStats stats = new BasilStats(m_scene, m_log)) {
 
-                    using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
+                        using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
 
-                        ConvertEntitiesToMeshes(allSOGs, assetFetcher, stats);
-                        // Everything has been converted into meshes and available in 'allSOGs'.
-                        m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
+                            List<EntityGroup> allSOGs = new List<EntityGroup>();
+                            ConvertEntitiesToMeshes(allSOGs, assetFetcher, stats);
+                            // Everything has been converted into meshes and available in 'allSOGs'.
+                            m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
 
-                        // Scan the entities and reorganize into static/non-static and find shared face meshes
-                        ReorganizeScene(allSOGs, reorgScene);
+                            // Scan the entities and reorganize into static/non-static and find shared face meshes
+                            ReorganizeScene(allSOGs, reorgScene);
 
-                        // Scan all the entities and extract statistics
-                        if (m_params.LogConversionStats) {
-                            ExtractStatistics(reorgScene, stats);
+                            // Scan all the entities and extract statistics
+                            if (m_params.LogConversionStats) {
+                                ExtractStatistics(reorgScene, stats);
+                            }
+
+                            // print out information about the similar faces
+                            if (m_params.LogDetailedSharedFaceStats) {
+                                LogSharedFaceInformation(reorgScene);
+                            }
+
+                            // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
+                            //     by repositioning the vertices in the shared meshes so they act as one mesh
+                            ConvertSharedFacesIntoMeshes(reorgScene);
+
+                            // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
+
+                            // Build the GLTF structures from the reorganized scene
+                            Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
+
+                            // Scan through all the textures and convert them into PNGs for the Gltf scene
+                            if (m_params.ExportTextures) {
+                                m_log.DebugFormat("{0} exporting textures", LogHeader);
+                                WriteOutImages(reorgScene);
+                            }
+
+                            // Write out the Gltf information
+                            ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
+
+                            allSOGs.Clear();
                         }
-
-                        // print out information about the similar faces
-                        if (m_params.LogDetailedSharedFaceStats) {
-                            LogSharedFaceInformation(reorgScene);
-                        }
-
-                        // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
-                        //     by repositioning the vertices in the shared meshes so they act as one mesh
-                        ConvertSharedFacesIntoMeshes(reorgScene);
-
-                        // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
-
-                        // Build the GLTF structures from the reorganized scene
-                        Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
-
-                        // Scan through all the textures and convert them into PNGs for the Gltf scene
-                        if (m_params.ExportTextures) {
-                            ExportTexturesForGltf(gltf, reorgScene, assetFetcher, m_params.GltfTargetDir);
-                        }
-
-                        // Write out the Gltf information
-                        ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
                     }
+
                 }
             }
         }
@@ -296,6 +309,10 @@ namespace org.herbal3d.BasilOS {
                         GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
                             .Then(theImage => {
                                 ep.faceImages.Add(ii, theImage);
+                                string imageFilename = null;
+                                string imageURI = null;
+                                CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out imageFilename, out imageURI);
+                                ep.faceFilenames.Add(ii, imageFilename);
                             })
                             .Catch(e => {
                                 m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
@@ -546,9 +563,39 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
-        private void ExportTexturesForGltf(Gltf gltf, ReorganizedScene reorgScene, IAssetFetcherWrapper assetFetcher, string targetDir) {
-            // TODO:
+        // The building of the Gltf structures found a bunch of images. Write them out.
+        private void WriteOutImages(ReorganizedScene reorgScene) {
+            reorgScene.staticEntities.ForEachExtendedPrim(ep => {
+                WriteOutImagesForEP(ep);
+            });
+            reorgScene.nonStaticEntities.ForEachExtendedPrim(ep => {
+                WriteOutImagesForEP(ep);
+            });
             return;
+        }
+
+        private void WriteOutImagesForEP(ExtendedPrim ep) {
+            foreach (KeyValuePair<int, Image> kvp in ep.faceImages) {
+                Image texImage = kvp.Value;
+                string texFilename = ep.faceFilenames[kvp.Key];
+                if (!File.Exists(texFilename)) {
+                    try {
+                        using (Bitmap textureBitmap = new Bitmap(texImage.Width, texImage.Height,
+                                    System.Drawing.Imaging.PixelFormat.Format32bppArgb)) {
+                            // convert the raw image into a channeled image
+                            using (Graphics graphics = Graphics.FromImage(textureBitmap)) {
+                                graphics.DrawImage(texImage, 0, 0);
+                                graphics.Flush();
+                            }
+                            // Write out the converted image as PNG
+                            textureBitmap.Save(texFilename, System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                    }
+                    catch (Exception e) {
+                        m_log.ErrorFormat("{0} FAILED PNG FILE CREATION: {0}", e);
+                    }
+                }
+            }
         }
 
         // Build the GLTF structures from the reorganized scene
@@ -588,20 +635,23 @@ namespace org.herbal3d.BasilOS {
         //     and reference URI for the item 'info' of type 'type'.
         // 'info' is what the asset wants to be called: a uuid for textures, mesh name, or buffer name.
         private void CreateAssetURI(string type, string info, out string filename, out string uri) {
-            // TODO: make this be smarter.
             string fname = "";
             string uuri = "";
-            if (type == Gltf.MakeAssetURITypeImage) {
-                uuri = "./" +  info + ".png";
-                fname = "./" +  info + ".png";
-            }
-            if (type == Gltf.MakeAssetURITypeBuff) {
-                uuri = "./" +  m_scene.Name + "_" + info + ".bin";
-                fname = "./" +  m_scene.Name + "_" + info + ".bin";
-            }
-            if (type == Gltf.MakeAssetURITypeMesh) {
-                uuri = "./" + info + ".mesh";
-                fname = "./" + info + ".mesh";
+
+            string targetDir = ResolveAndCreateDir(m_params.GltfTargetDir);
+            if (targetDir != null) {
+                if (type == Gltf.MakeAssetURITypeImage) {
+                    uuri = JoinFilePieces(targetDir, info + ".png");
+                    fname = JoinFilePieces(targetDir, info + ".png");
+                }
+                if (type == Gltf.MakeAssetURITypeBuff) {
+                    uuri = JoinFilePieces(targetDir, m_scene.Name + "_" + info + ".bin");
+                    fname = JoinFilePieces(targetDir, m_scene.Name + "_" + info + ".bin");
+                }
+                if (type == Gltf.MakeAssetURITypeMesh) {
+                    uuri = JoinFilePieces(targetDir, info + ".mesh");
+                    fname = JoinFilePieces(targetDir, info + ".mesh");
+                }
             }
             filename = fname;
             uri = uuri;
@@ -719,8 +769,8 @@ namespace org.herbal3d.BasilOS {
         /// <param name="last"></param>
         /// <returns></returns>
         public static string JoinFilePieces(string first, string last) {
-            // string separator = "" + Path.DirectorySeparatorChar;
-            string separator = "/";     // both .NET and mono are happy with forward slash
+            string separator = "" + Path.DirectorySeparatorChar;
+            // string separator = "/";     // both .NET and mono are happy with forward slash
             string f = first;
             string l = last;
             while (f.EndsWith(separator)) f = f.Substring(f.Length - 1);

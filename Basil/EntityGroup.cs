@@ -26,6 +26,7 @@ namespace org.herbal3d.BasilOS {
         public Dictionary<int, OMV.Primitive.TextureEntryFace> faceTextures { get; set; }
         // Images for a fae if it is specified
         public Dictionary<int, Image> faceImages { get; set; }
+        public Dictionary<int, string> faceFilenames { get; set; }
 
         public ExtendedPrim() {
         }
@@ -37,6 +38,7 @@ namespace org.herbal3d.BasilOS {
             facetedMesh = pFMesh;
             faceTextures = new Dictionary<int, OMV.Primitive.TextureEntryFace>();
             faceImages = new Dictionary<int, Image>();
+            faceFilenames = new Dictionary<int, string>();
         }
 
         public override int GetHashCode() {
