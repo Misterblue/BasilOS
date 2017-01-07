@@ -39,34 +39,28 @@ namespace org.herbal3d.BasilOS {
         }
 
         public static string Vector3ToJSONArray(OMV.Vector3 vect) {
-            StringBuilder buff = new StringBuilder();
-            buff.Append("[ ");
-            buff.Append(vect.X.ToString());
-            buff.Append(", ");
-            buff.Append(vect.Y.ToString());
-            buff.Append(", ");
-            buff.Append(vect.Z.ToString());
-            buff.Append(" ]");
-            return buff.ToString();
+            return ParamsToJSONArray(vect.X, vect.Y, vect.Z);
         }
 
         public static string QuaternionToJSONArray(OMV.Quaternion vect) {
+            return ParamsToJSONArray(vect.X, vect.Y, vect.Z, vect.W);
+        }
+
+        public static string ParamsToJSONArray(params Object[] vals) {
             StringBuilder buff = new StringBuilder();
             buff.Append("[ ");
-            buff.Append(vect.X.ToString());
-            buff.Append(", ");
-            buff.Append(vect.Y.ToString());
-            buff.Append(", ");
-            buff.Append(vect.Z.ToString());
-            buff.Append(", ");
-            buff.Append(vect.W.ToString());
+            bool first = true;
+            foreach (object obj in vals) {
+                if (!first) buff.Append(", ");
+                buff.Append(obj.ToString());
+                first = false;
+            }
             buff.Append(" ]");
             return buff.ToString();
         }
 
         public static string Indent(int level) {
-            string Ts = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
-            return Ts.Substring(0, level);
+            return "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t".Substring(0, level);
         }
     }
 
@@ -534,6 +528,10 @@ namespace org.herbal3d.BasilOS {
             if (val is string) {
                 ret = "\"" + val + "\"";
             }
+            else if (val is OMV.Color4) {
+                OMV.Color4 col = (OMV.Color4)val;
+                ret = ParamsToJSONArray(col.R, col.G, col.B, col.A);
+            }
             else if (val is OMV.Vector3) {
                 ret = GltfClass.Vector3ToJSONArray((OMV.Vector3)val);
             }
@@ -876,7 +874,7 @@ namespace org.herbal3d.BasilOS {
             }
             if (extensions != null && extensions.Count > 0) {
                 Gltf.WriteJSONLineEnding(outt, ref first);
-                outt.Write(GltfClass.Indent(level) + "\"extensions\": \"");
+                outt.Write(GltfClass.Indent(level) + "\"extensions\": ");
                 extensions.ToJSON(outt, level + 1);
             }
             outt.Write("\n" + GltfClass.Indent(level) + "}\n");
@@ -899,7 +897,7 @@ namespace org.herbal3d.BasilOS {
     public class GltfAccessor : GltfClass {
         public GltfBufferView bufferView;
         public int count;
-        public uint compoundType;
+        public uint componentType;
         public string type;
         public int byteOffset;
         public int byteStride;
@@ -913,7 +911,7 @@ namespace org.herbal3d.BasilOS {
             Gltf.WriteJSONValueLine(outt, level, ref first, "bufferView", bufferView.ID);
             Gltf.WriteJSONValueLine(outt, level, ref first, "count", count);
             if (compoundType != 0)
-                Gltf.WriteJSONValueLine(outt, level, ref first, "compoundType", compoundType);
+                Gltf.WriteJSONValueLine(outt, level, ref first, "componentType", componentType);
             Gltf.WriteJSONValueLine(outt, level, ref first, "type", type);
             Gltf.WriteJSONValueLine(outt, level, ref first, "byteOffset", byteOffset);
             Gltf.WriteJSONValueLine(outt, level, ref first, "byteStride", byteStride);

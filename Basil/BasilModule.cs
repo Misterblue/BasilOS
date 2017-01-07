@@ -641,15 +641,15 @@ namespace org.herbal3d.BasilOS {
             string targetDir = ResolveAndCreateDir(m_params.GltfTargetDir);
             if (targetDir != null) {
                 if (type == Gltf.MakeAssetURITypeImage) {
-                    uuri = JoinFilePieces(targetDir, info + ".png");
+                    uuri = m_params.URIBase + info + ".png";
                     fname = JoinFilePieces(targetDir, info + ".png");
                 }
                 if (type == Gltf.MakeAssetURITypeBuff) {
-                    uuri = JoinFilePieces(targetDir, m_scene.Name + "_" + info + ".bin");
+                    uuri = m_params.URIBase + m_scene.Name + "_" + info + ".bin";
                     fname = JoinFilePieces(targetDir, m_scene.Name + "_" + info + ".bin");
                 }
                 if (type == Gltf.MakeAssetURITypeMesh) {
-                    uuri = JoinFilePieces(targetDir, info + ".mesh");
+                    uuri = m_params.URIBase + info + ".mesh";
                     fname = JoinFilePieces(targetDir, info + ".mesh");
                 }
             }
