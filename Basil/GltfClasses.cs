@@ -369,10 +369,13 @@ namespace org.herbal3d.BasilOS {
             binIndicesView.buffer = binBuff;
             binIndicesView.byteOffset = 0;
             binIndicesView.byteLength = paddedSizeofIndices;
+            binIndicesView.target = WebGLConstants.ELEMENT_ARRAY_BUFFER;
+
             GltfBufferView binVerticesView = new GltfBufferView(gltfRoot, "bufferViewVertices");
             binVerticesView.buffer = binBuff;
             binVerticesView.byteOffset = paddedSizeofIndices;
             binVerticesView.byteLength = sizeofVertices;
+            binVerticesView.target = WebGLConstants.ARRAY_BUFFER;
             m_log.DebugFormat("{0} BuildBuffers: indOffset={1}, indLen={2}, verOff={3}, verLen={4}", LogHeader,
                         binIndicesView.byteOffset, binIndicesView.byteLength,
                         binVerticesView.byteOffset, binVerticesView.byteLength);
@@ -1013,7 +1016,7 @@ namespace org.herbal3d.BasilOS {
         public GltfBuffer buffer;
         public int byteOffset;
         public int byteLength;
-        public int target;
+        public uint target;
 
         public GltfBufferView(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.bufferViews.Add(this);
