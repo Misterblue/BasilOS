@@ -35,14 +35,12 @@ using OpenSim.Region.Framework.Scenes;
 namespace org.herbal3d.BasilOS {
 
     class PrimToMesh : IDisposable {
-        OMVR.MeshmerizerR m_mesher;
-        private MeshCache m_meshCache;
+        private OMVR.MeshmerizerR m_mesher;
         ILog m_log;
         String LogHeader = "[Basil.PrimToMesh]";
 
         public PrimToMesh(ILog logger) {
             m_mesher = new OMVR.MeshmerizerR();
-            m_meshCache = new MeshCache(m_log);
             m_log = logger;
         }
 
@@ -98,13 +96,7 @@ namespace org.herbal3d.BasilOS {
                                 OMV.Primitive prim, OMVR.DetailLevel lod) {
             OMVR.FacetedMesh mesh;
 
-            int primHash = prim.GetHashCode();
-            if (m_meshCache.Contains(primHash)) {
-                mesh = m_meshCache.GetMesh(primHash);
-            }
-            else {
-                mesh = m_mesher.GenerateFacetedMesh(prim, lod);
-            }
+            mesh = m_mesher.GenerateFacetedMesh(prim, lod);
 
             ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, mesh);
 
@@ -192,6 +184,26 @@ namespace org.herbal3d.BasilOS {
         public void UpdateCoords(OMVR.Face pFace, OMV.Primitive.TextureEntryFace pTef) {
             if (pFace.Vertices != null) {
                 m_mesher.TransformTexCoords(pFace.Vertices, pFace.Center, pTef, new OMV.Vector3(1,1,1));
+            }
+        }
+
+        // Walk through all the vertices and scale the included meshes
+        public void ScaleMeshes(ExtendedPrimGroup ePG) {
+            foreach (ExtendedPrim ep in ePG.Values) {
+                OMV.Vector3 scale = ep.primitive.Scale;
+                if (scale.X != 1.0 || scale.Y != 1.0 || scale.Z != 1.0) {
+                    m_log.DebugFormat("{0} ScaleMeshes. Scaling ep={1}, scale={2}", LogHeader, ep.SOP.UUID, scale);
+                    // DEBUG DEBUG DumpScaleTest(ep, "Before");
+                    for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
+                        OMVR.Face aFace = ep.facetedMesh.Faces[ii];
+                        for (int jj = 0; jj < aFace.Vertices.Count; jj++) {
+                            OMVR.Vertex aVert = aFace.Vertices[jj];
+                            aVert.Position *= scale;
+                            aFace.Vertices[jj] = aVert;
+                        }
+                        ep.facetedMesh.Faces[ii] = aFace;
+                    }
+                }
             }
         }
     }

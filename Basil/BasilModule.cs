@@ -109,7 +109,6 @@ namespace org.herbal3d.BasilOS {
                 "basil convert",
                 "Convert all entities in the region to basil format",
                 ProcessConvert);
-
         }
 
         // Selection of a particular face of a prim. Contains index and ExtendedPrim
@@ -263,6 +262,11 @@ namespace org.herbal3d.BasilOS {
                         prom.Reject(e);
                     })
                     .Then(ePrimGroup => {
+                        // If scaling is done in the mesh, do it now
+                        if (!m_params.DisplayTimeScaling) {
+                            mesher.ScaleMeshes(ePrimGroup);
+                        }
+
                         // The prims in the group need to be decorated with texture/image information
                         UpdateTextureInfo(ePrimGroup, aPrim, assetFetcher, mesher);
 
@@ -690,7 +694,6 @@ namespace org.herbal3d.BasilOS {
             GltfNode ret = new GltfNode(pGltf, containingScene, id);
 
             ret.name = ep.SOP.Name;
-
             if (ep.SOP.IsRoot) {
                 ret.translation = ep.SOP.GetWorldPosition();
                 ret.rotation = ep.SOP.GetWorldRotation();
@@ -703,6 +706,32 @@ namespace org.herbal3d.BasilOS {
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Child. pos={1}, rot={2}",
                 //             LogHeader, ret.translation, ret.rotation);
             }
+
+            if (m_params.DisplayTimeScaling) {
+                ret.scale = ep.SOP.Scale;
+            }
+            else {
+                ret.scale = new OMV.Vector3(1, 1, 1);
+            }
+
+            // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. pos={1}, rot={2}",
+            //             LogHeader, ret.translation, ret.rotation);
+            // OMV.Matrix4 matScale = OMV.Matrix4.CreateScale(ep.SOP.Scale);
+            // OMV.Matrix4 matPos = OMV.Matrix4.CreateTranslation(ret.translation);
+            // OMV.Matrix4 matRotedPos = OMV.Matrix4.Transform(matPos, ret.rotation);
+            // OMV.Matrix4 matScaledRotedPos = matRotedPos * matScale;
+
+            OMV.Matrix4 mat = OMV.Matrix4.CreateTranslation(ret.translation)
+                        + OMV.Matrix4.CreateFromQuaternion(ret.rotation);
+
+            OMV.Matrix4 convertZupToYup = new OMV.Matrix4(
+                                            1,  0, 0, 0,
+                                            0,  0, 1, 0,
+                                            0, -1, 0, 0,
+                                            0,  0, 0, 0);
+
+            // ret.matrix = mat * convertZupToYup;
+            ret.matrix = mat;
 
             int numFace = 0;
             ep.facetedMesh.Faces.ForEach(face => {
@@ -777,6 +806,5 @@ namespace org.herbal3d.BasilOS {
             while (l.StartsWith(separator)) l = l.Substring(1, l.Length - 1);
             return f + separator + l;
         }
-
     }
 }

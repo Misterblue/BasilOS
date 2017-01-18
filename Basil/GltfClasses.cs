@@ -109,6 +109,15 @@ namespace org.herbal3d.BasilOS {
                 OMV.Color4 col = (OMV.Color4)val;
                 ret = ParamsToJSONArray(col.R, col.G, col.B, col.A);
             }
+            else if (val is OMV.Matrix4) {
+                OMV.Matrix4 mat = (OMV.Matrix4)val;
+                ret = ParamsToJSONArray(
+                    mat[0,0], mat[0,1], mat[0,2], mat[0,3],
+                    mat[1,0], mat[1,1], mat[1,2], mat[1,3],
+                    mat[2,0], mat[2,1], mat[2,2], mat[2,3],
+                    mat[3,0], mat[3,1], mat[3,2], mat[3,3]
+                );
+            }
             else if (val is OMV.Vector3) {
                 OMV.Vector3 vect = (OMV.Vector3)val;
                 ret = ParamsToJSONArray(vect.X, vect.Y, vect.Z);
@@ -707,7 +716,7 @@ namespace org.herbal3d.BasilOS {
         public string jointName;
         public GltfMeshes meshes;
         // has either 'matrix' or 'rotation/scale/translation'
-        public GltfVector16 matrix;
+        public OMV.Matrix4 matrix;
         public OMV.Quaternion rotation;
         public OMV.Vector3 scale;
         public OMV.Vector3 translation;
@@ -728,7 +737,7 @@ namespace org.herbal3d.BasilOS {
         private void NodeInit(Gltf pRoot, GltfScene containingScene) {
             meshes = new GltfMeshes(gltfRoot);
             children = new GltfNodes(gltfRoot);
-            matrix = null;
+            matrix = OMV.Matrix4.Zero;
             rotation = new OMV.Quaternion();
             scale = new OMV.Vector3(1, 1, 1);
             translation = new OMV.Vector3(0, 0, 0);
@@ -743,9 +752,14 @@ namespace org.herbal3d.BasilOS {
             outt.Write(" { ");
             bool first = true;
             Gltf.WriteJSONValueLine(outt, level, ref first, "name", name);
-            Gltf.WriteJSONValueLine(outt, level, ref first, "translation", translation);
-            Gltf.WriteJSONValueLine(outt, level, ref first, "scale", scale);
-            Gltf.WriteJSONValueLine(outt, level, ref first, "rotation", rotation);
+            if (matrix != OMV.Matrix4.Zero) {
+                Gltf.WriteJSONValueLine(outt, level, ref first, "matrix", matrix);
+            }
+            else {
+                Gltf.WriteJSONValueLine(outt, level, ref first, "translation", translation);
+                Gltf.WriteJSONValueLine(outt, level, ref first, "scale", scale);
+                Gltf.WriteJSONValueLine(outt, level, ref first, "rotation", rotation);
+            }
             Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"children\": ");
             children.ToJSONArrayOfIDs(outt, level+1);

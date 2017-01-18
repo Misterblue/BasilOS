@@ -40,6 +40,8 @@ namespace org.herbal3d.BasilOS {
         public string GltfTargetDir;    // where to store all the Gltf files
         public bool ExportTextures;     // also export textures to the target dir
 
+        public bool DisplayTimeScaling; // 'true' if to delay mesh scaling to display/GPU time
+
         public string URIBase;          // the URI base to be added to the beginning of the asset name
 
         public bool LogConversionStats; // output numbers about number of entities converted
@@ -78,6 +80,8 @@ namespace org.herbal3d.BasilOS {
                 "./gltf" ),
             new ParameterDefn<bool>("ExportTextures", "Convert textures to PNGs and export to target dir",
                 true ),
+            new ParameterDefn<bool>("DisplayTimeScaling", "If to delay mesh scaling to display/GPU time",
+                false ),
             new ParameterDefn<string>("URIBase", "the string added to be beginning of asset name to create URI",
                 "./" ),
             new ParameterDefn<bool>("LogConversionStats", "output numbers about number of entities converted",
