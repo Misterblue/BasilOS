@@ -255,6 +255,13 @@ namespace org.herbal3d.BasilOS {
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
 
+                // DEBUG DEBUG
+                m_log.DebugFormat("{0} SOP {1} wPos={2}, gPos={3}, aPos={4}, oPos={5}, rOff={6}, wRot={7}, scale={8}",
+                        LogHeader, sop.UUID,
+                        sop.GetWorldPosition(),
+                        sop.GroupPosition, sop.AbsolutePosition, sop.OffsetPosition,
+                        sop.RotationOffset, sop.GetWorldRotation(), sop.Scale);
+                // END DEBUG DEBUG
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Catch(e => {
