@@ -188,22 +188,30 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Walk through all the vertices and scale the included meshes
-        public void ScaleMeshes(ExtendedPrimGroup ePG) {
+
+        public static void ScaleMeshes(ExtendedPrimGroup ePG) {
             foreach (ExtendedPrim ep in ePG.Values) {
                 OMV.Vector3 scale = ep.primitive.Scale;
                 if (scale.X != 1.0 || scale.Y != 1.0 || scale.Z != 1.0) {
-                    m_log.DebugFormat("{0} ScaleMeshes. Scaling ep={1}, scale={2}", LogHeader, ep.SOP.UUID, scale);
-                    // DEBUG DEBUG DumpScaleTest(ep, "Before");
-                    for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
-                        OMVR.Face aFace = ep.facetedMesh.Faces[ii];
-                        for (int jj = 0; jj < aFace.Vertices.Count; jj++) {
-                            OMVR.Vertex aVert = aFace.Vertices[jj];
-                            aVert.Position *= scale;
-                            aFace.Vertices[jj] = aVert;
-                        }
-                        ep.facetedMesh.Faces[ii] = aFace;
-                    }
+                    OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
+                        vert.Position *= scale;
+                    });
                 }
+            }
+        }
+
+        // Loop over all the vertices in an ExtendedPrim and perform some operation on them
+        public delegate void OperateOnVertex(ref OMVR.Vertex vert);
+        public static void OnAllVertex(ExtendedPrim ep, OperateOnVertex vertOp) {
+            // DEBUG DEBUG DumpScaleTest(ep, "Before");
+            for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
+                OMVR.Face aFace = ep.facetedMesh.Faces[ii];
+                for (int jj = 0; jj < aFace.Vertices.Count; jj++) {
+                    OMVR.Vertex aVert = aFace.Vertices[jj];
+                    vertOp(ref aVert);
+                    aFace.Vertices[jj] = aVert;
+                }
+                ep.facetedMesh.Faces[ii] = aFace;
             }
         }
     }

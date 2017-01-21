@@ -13,6 +13,35 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
 
 namespace org.herbal3d.BasilOS {
+    public class CoordSystem {
+        public const int Handedness = 0x200;    // the bit that specifies the handedness
+        public const int UpDimension = 0x00F;   // the field that specifies the up dimension
+        public const int RightHand = 0x000;
+        public const int LeftHand = 0x200;
+        public const int Yup = 0x001;
+        public const int Zup = 0x002;
+        public const int RightHand_Yup = RightHand + Yup;
+        public const int LeftHand_Yup = LeftHand + Yup;
+        public const int RightHand_Zup = RightHand + Zup;
+        public const int LeftHand_Zup = LeftHand + Zup;
+        // RightHand_Zup: SL
+        // RightHand_Yup: OpenGL
+        // LeftHand_Yup: DirectX, Babylon, Unity
+
+        public int system;
+        public CoordSystem() {
+            system = RightHand_Zup; // default to SL
+        }
+        public CoordSystem(int initCoord) {
+            system = initCoord;
+        }
+        public int getUpDimension { get  { return system & UpDimension; } }
+        public int getHandedness { get  { return system & Handedness; } }
+        public bool isHandednessChanging(CoordSystem nextSystem) {
+            return (system & Handedness) != (nextSystem.system & Handedness);
+        }
+    }
+
     // An extended description of an entity that includes the original
     //     prim description as well as the mesh.
     // All the information about the meshed piece is collected here so other mappings
@@ -22,11 +51,15 @@ namespace org.herbal3d.BasilOS {
         public SceneObjectPart SOP { get; set; }
         public OMV.Primitive primitive { get; set; }
         public OMVR.FacetedMesh facetedMesh { get; set; }
+        public OMV.Vector3 translation;
+        public OMV.Quaternion rotation;
+        public bool positionIsParentRelative;
         // Texture information for the faces
         public Dictionary<int, OMV.Primitive.TextureEntryFace> faceTextures { get; set; }
         // Images for a fae if it is specified
         public Dictionary<int, Image> faceImages { get; set; }
         public Dictionary<int, string> faceFilenames { get; set; }
+        public CoordSystem coordSystem; // coordinate system of this prim
 
         public ExtendedPrim() {
         }
@@ -36,9 +69,22 @@ namespace org.herbal3d.BasilOS {
             SOP = pSOP;
             primitive = pPrim;
             facetedMesh = pFMesh;
+            if (SOP != null) {
+                if (SOP.IsRoot) {
+                    translation = SOP.GetWorldPosition();
+                    rotation = SOP.GetWorldRotation();
+                    positionIsParentRelative = false;
+                }
+                else {
+                    translation = SOP.OffsetPosition;
+                    rotation = SOP.RotationOffset;
+                    positionIsParentRelative = true;
+                }
+            }
             faceTextures = new Dictionary<int, OMV.Primitive.TextureEntryFace>();
             faceImages = new Dictionary<int, Image>();
             faceFilenames = new Dictionary<int, string>();
+            coordSystem = new CoordSystem(CoordSystem.RightHand_Yup);    // default to SL coordinates
         }
 
         public override int GetHashCode() {

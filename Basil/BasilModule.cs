@@ -47,6 +47,7 @@ namespace org.herbal3d.BasilOS {
         private IConfig m_sysConfig = null;
 
         protected Scene m_scene;
+        private OMV.Vector3 m_regionCenterOffset = new OMV.Vector3(128, 128, 0);
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -83,6 +84,7 @@ namespace org.herbal3d.BasilOS {
         public void AddRegion(Scene scene) {
             if (m_params.Enabled) {
                 m_scene = scene;
+                m_regionCenterOffset = new OMV.Vector3(m_scene.RegionInfo.RegionSizeX / 2, m_scene.RegionInfo.RegionSizeY / 2, 0); ;
                 m_log.DebugFormat("{0} REGION {1} ADDED", LogHeader, scene.RegionInfo.RegionName);
             }
         }
@@ -181,7 +183,7 @@ namespace org.herbal3d.BasilOS {
 
                         using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
 
-                            List<EntityGroup> allSOGs = new List<EntityGroup>();
+                            EntityGroupList allSOGs = new EntityGroupList();
                             ConvertEntitiesToMeshes(allSOGs, assetFetcher, stats);
                             // Everything has been converted into meshes and available in 'allSOGs'.
                             m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
@@ -226,7 +228,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         // For each of the SceneObjectGroups in the scene, create an EntityGroup with everything converted to meshes
-        private void ConvertEntitiesToMeshes(List<EntityGroup> allSOGs, IAssetFetcherWrapper assetFetcher, BasilStats stats) {
+        private void ConvertEntitiesToMeshes(EntityGroupList allSOGs, IAssetFetcherWrapper assetFetcher, BasilStats stats) {
             // m_log.DebugFormat("{0} ConvertEntitiesToMeshes:", LogHeader);
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
@@ -271,7 +273,7 @@ namespace org.herbal3d.BasilOS {
                     .Then(ePrimGroup => {
                         // If scaling is done in the mesh, do it now
                         if (!m_params.DisplayTimeScaling) {
-                            mesher.ScaleMeshes(ePrimGroup);
+                            PrimToMesh.ScaleMeshes(ePrimGroup);
                         }
 
                         // The prims in the group need to be decorated with texture/image information
@@ -408,33 +410,33 @@ namespace org.herbal3d.BasilOS {
         // Pass over all the converted entities and sort into types of meshes.
         // Entities with scripts are deemed to be non-static. Everything else is static.
         // For the static elements, group all the mesh faces that have common textures/materials.
-        private void ReorganizeScene(List<EntityGroup> allSOGs, ReorganizedScene reorgScene) {
+        private void ReorganizeScene(EntityGroupList allSOGs, ReorganizedScene reorgScene) {
             allSOGs.ForEach(eGroup => {
+                // Assume it is static and make dynmic if any prim in it is not static
+                bool isStatic = true;
                 // For each prim in the entity
                 eGroup.ForEach(ePGroup => {
                     // only check for the primary mesh
                     if (ePGroup.ContainsKey(PrimGroupType.lod1)) {
                         ExtendedPrim ep = ePGroup[PrimGroupType.lod1];
-                        // if the prim has a script, it's a different layer
-                        if (IsStaticShape(ep)) {
-                            // the prim is not scripted so we add all its faces to the static group
-                            reorgScene.staticEntities.AddUniqueEntity(eGroup);
-                            // if (reorgScene.staticEntities.AddUniqueEntity(eGroup)) {
-                            //     m_log.DebugFormat("{0} ReorganiseScene. Added to staticEntities: sog={1}", LogHeader, eGroup.SOG.UUID);
-                            // }
-                        }
-                        else {
-                            // if any of the prims in a linkset have a script, the whole entity is not static
-                            reorgScene.nonStaticEntities.AddUniqueEntity(eGroup);
-                            // if (reorgScene.nonStaticEntities.AddUniqueEntity(eGroup)) {
-                            //     m_log.DebugFormat("{0} ReorganiseScene. Added to non-staticEntities: sog={1}", LogHeader, eGroup.SOG.UUID);
-                            // }
+                        if (!IsStaticShape(ep)) {
+                            // If the prim has a script, it's a different layer
+                            // If any of the prims in a linkset have a script, the whole entity is not static
+                            isStatic = false;
                         }
                     }
                     else {
                         m_log.ErrorFormat("{0} Prim didn't have primary mesh. ID={1}", LogHeader, eGroup.SOG.UUID);
                     }
                 });
+                if (isStatic) {
+                    // This is a linkset without scripts or other changable qualities
+                    reorgScene.staticEntities.Add(eGroup);
+                }
+                else {
+                    // Something might change in this linkset
+                    reorgScene.nonStaticEntities.Add(eGroup);
+                }
             });
             // m_log.DebugFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
             // m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
@@ -618,6 +620,7 @@ namespace org.herbal3d.BasilOS {
 
             // For each of the entities, create a gltfNode for the root and then add the linkset prims as the children
             reorgScene.nonStaticEntities.ForEach(eg => {
+                m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding non-static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
                 AddNodeToGltf(gltf, gScene, eg);
             });
 
@@ -629,6 +632,7 @@ namespace org.herbal3d.BasilOS {
 
             // DEBUG DEBUG: for testing, just pass through the static elements
             reorgScene.staticEntities.ForEach(eg => {
+                m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
                 AddNodeToGltf(gltf, gScene, eg);
             });
 
@@ -698,47 +702,38 @@ namespace org.herbal3d.BasilOS {
             else {
                 id += "_part" + ep.SOP.LinkNum.ToString();
             }
-            GltfNode ret = new GltfNode(pGltf, containingScene, id);
 
-            ret.name = ep.SOP.Name;
+            // Convert the extended prim's coordinate system to OpenGL-ness
+            FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Yup));
+
+            GltfNode newNode = new GltfNode(pGltf, containingScene, id);
+
+            newNode.name = ep.SOP.Name;
+
             if (ep.SOP.IsRoot) {
-                ret.translation = ep.SOP.GetWorldPosition();
-                ret.rotation = ep.SOP.GetWorldRotation();
+                newNode.translation = ep.SOP.GetWorldPosition();
+                newNode.rotation = ep.SOP.GetWorldRotation();
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. IsRoot. pos={1}, rot={2}",
                 //             LogHeader, ret.translation, ret.rotation);
             }
             else {
-                ret.translation = ep.SOP.RelativePosition;
-                ret.rotation = ep.SOP.RotationOffset;
+                newNode.translation = ep.SOP.OffsetPosition;
+                newNode.rotation = ep.SOP.RotationOffset;
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Child. pos={1}, rot={2}",
                 //             LogHeader, ret.translation, ret.rotation);
             }
 
             if (m_params.DisplayTimeScaling) {
-                ret.scale = ep.SOP.Scale;
+                newNode.scale = ep.SOP.Scale;
             }
             else {
-                ret.scale = new OMV.Vector3(1, 1, 1);
+                newNode.scale = new OMV.Vector3(1, 1, 1);
+                // The following is needed if the child is it's own mesh separate from the parent
+                // if (!ep.SOP.IsRoot) {
+                //     // If this is a child, divide out the scale of the parent
+                //     ret.scale /= ep.SOG.RootPart.Scale;
+                // }
             }
-
-            // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. pos={1}, rot={2}",
-            //             LogHeader, ret.translation, ret.rotation);
-            // OMV.Matrix4 matScale = OMV.Matrix4.CreateScale(ep.SOP.Scale);
-            // OMV.Matrix4 matPos = OMV.Matrix4.CreateTranslation(ret.translation);
-            // OMV.Matrix4 matRotedPos = OMV.Matrix4.Transform(matPos, ret.rotation);
-            // OMV.Matrix4 matScaledRotedPos = matRotedPos * matScale;
-
-            OMV.Matrix4 mat = OMV.Matrix4.CreateTranslation(ret.translation)
-                        + OMV.Matrix4.CreateFromQuaternion(ret.rotation);
-
-            OMV.Matrix4 convertZupToYup = new OMV.Matrix4(
-                                            1,  0, 0, 0,
-                                            0,  0, 1, 0,
-                                            0, -1, 0, 0,
-                                            0,  0, 0, 0);
-
-            // ret.matrix = mat * convertZupToYup;
-            ret.matrix = mat;
 
             int numFace = 0;
             ep.facetedMesh.Faces.ForEach(face => {
@@ -747,11 +742,47 @@ namespace org.herbal3d.BasilOS {
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Face. id={1}", LogHeader, meshID);
                 mesh.underlyingPrim = ep;
                 mesh.underlyingMesh = face;
-                ret.meshes.Add(mesh);
+                newNode.meshes.Add(mesh);
                 numFace++;
             });
 
-            return ret;
+            return newNode;
+        }
+
+        public void FixCoordinates(ExtendedPrim ep, CoordSystem newCoords) {
+            if (ep.coordSystem.system != newCoords.system) {
+
+                // Go through all the vertices and change the coordinate system
+                PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
+                    // This doesn't cover all cases so this routine is not general purpose
+                    if (ep.coordSystem.getUpDimension != newCoords.getUpDimension) {
+                        // The only things that change are Y and Z. Swap same.
+                        float temp = vert.Position.Y;
+                        vert.Position.Y = vert.Position.Z;
+                        vert.Position.Z = temp;
+                    }
+                    if (ep.coordSystem.isHandednessChanging(newCoords)) {
+                        // Front and back is changing
+                        vert.Position.X = m_scene.RegionInfo.RegionSizeX - vert.Position.X;
+                    }
+                });
+
+                // The ExtendedPrim is all converted
+                ep.coordSystem = newCoords;
+            }
+        }
+
+        // Adjust the coordinates for a root object to convert Z-up coordinate to Y-up coordinate
+        // Second Life is right handed, Z-up
+        // OpenGL is right handed, Y-up
+        // others: Babalon, Unity, DirectX, are left handed, Y-up
+        private OMV.Quaternion m_90AroundXAxis = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
+        public void FixCoordinatesXX(ExtendedPrim ep, ref OMV.Vector3 pos, ref OMV.Quaternion rot) {
+            // right handed, Z-up to right handed, Y-up is invert X and rotate 90 around X axis
+            OMV.Vector3 newPos = pos - m_regionCenterOffset;
+            newPos.X = -newPos.X;
+            pos = (newPos + m_regionCenterOffset) * m_90AroundXAxis;
+            rot = m_90AroundXAxis * rot;
         }
 
         /// <summary>
