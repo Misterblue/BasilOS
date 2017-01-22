@@ -37,7 +37,7 @@ namespace org.herbal3d.BasilOS {
         public int numNullTexturedFaces = 0;
         public int numMaterials = 0;
 
-        public Dictionary<int, int> materialCount = new Dictionary<int, int>();
+        public Dictionary<int, OMV.Primitive.TextureEntryFace> faceMaterials;
         public List<OMV.UUID> textureIDs = new List<OMV.UUID>();
 
         public Scene m_scene;
@@ -46,9 +46,64 @@ namespace org.herbal3d.BasilOS {
         public BasilStats(Scene pScene, ILog pLog) {
             m_scene = pScene;
             m_log = pLog;
-            materialCount = new Dictionary<int, int>();
+            faceMaterials = new Dictionary<int, OpenMetaverse.Primitive.TextureEntryFace>();
             textureIDs = new List<OMV.UUID>();
         }
+
+        // Gather statistics
+        public void ExtractStatistics(BasilModule.ReorganizedScene reorgScene, BasilStats stats) {
+            EntityGroupList allEntities = reorgScene.staticEntities;
+            allEntities.AddRange(reorgScene.nonStaticEntities);
+
+            stats.numEntities = allEntities.Count;
+            stats.numStaticEntities = reorgScene.staticEntities.Count;
+
+            reorgScene.nonStaticEntities.ForEach(eGroup => {
+                if (eGroup.Count > 1) {
+                    // if the entity is made of multiple pieces, they are a linkset
+                    stats.numLinksets++;
+                }
+            });
+            reorgScene.staticEntities.ForEach(eGroup => {
+                if (eGroup.Count > 1) {
+                    stats.numStaticLinksets++;
+                }
+            });
+            stats.numLinksets += stats.numStaticLinksets;
+
+            allEntities.ForEachExtendedPrim(ep => {
+                // Count total prim faces
+                if (ep.facetedMesh != null) {
+                    stats.numFaces += ep.facetedMesh.Faces.Count;
+                }
+
+                // Get the number of unique materials
+                OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
+                int numFaces = ep.facetedMesh.Faces.Count;
+                for (int ii = 0; ii < numFaces; ii++) {
+                    OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
+                    if (tef == null) {
+                        numNullTexturedFaces++;
+                        tef = tex.DefaultTexture;
+                    }
+                    int hashCode = tef.GetHashCode();
+                    if (!faceMaterials.ContainsKey(hashCode)) {
+                        faceMaterials.Add(hashCode, tef);
+                    }
+                }
+            });
+
+            // Get number of unique textures
+            foreach (KeyValuePair<int, OMV.Primitive.TextureEntryFace> kvp in faceMaterials) {
+                OMV.UUID textureID = kvp.Value.TextureID;
+                if (!stats.textureIDs.Contains(textureID)) {
+                    stats.textureIDs.Add(textureID);
+                }
+            }
+
+            stats.numMaterials = faceMaterials.Count;
+        }
+
 
         public void LogAll(string header) {
             m_log.InfoFormat("{0} ", header);
@@ -71,8 +126,8 @@ namespace org.herbal3d.BasilOS {
         protected virtual void Dispose(bool disposing) {
             if (!disposedValue) {
                 if (disposing) {
-                    materialCount.Clear();
-                    materialCount = null;
+                    faceMaterials.Clear();
+                    faceMaterials = null;
                     textureIDs.Clear();
                     textureIDs = null;
                 }

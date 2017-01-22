@@ -40,6 +40,13 @@ namespace org.herbal3d.BasilOS {
         public bool isHandednessChanging(CoordSystem nextSystem) {
             return (system & Handedness) != (nextSystem.system & Handedness);
         }
+        public string SystemName { get { return SystemNames[system]; } }
+        public static Dictionary<int, string> SystemNames = new Dictionary<int, string>() {
+            { RightHand_Yup, "RightHand,Y-up" },
+            { RightHand_Zup, "RightHand,Z-up" },
+            { LeftHand_Yup, "LeftHand,Y-up" },
+            { LeftHand_Zup, "LeftHand,Z-up" }
+        };
     }
 
     // An extended description of an entity that includes the original
@@ -51,19 +58,23 @@ namespace org.herbal3d.BasilOS {
         public SceneObjectPart SOP { get; set; }
         public OMV.Primitive primitive { get; set; }
         public OMVR.FacetedMesh facetedMesh { get; set; }
+
+        public CoordSystem coordSystem; // coordinate system of this prim
         public OMV.Vector3 translation;
         public OMV.Quaternion rotation;
+        public OMV.Vector3 scale;
         public bool positionIsParentRelative;
         // Texture information for the faces
         public Dictionary<int, OMV.Primitive.TextureEntryFace> faceTextures { get; set; }
         // Images for a fae if it is specified
         public Dictionary<int, Image> faceImages { get; set; }
         public Dictionary<int, string> faceFilenames { get; set; }
-        public CoordSystem coordSystem; // coordinate system of this prim
 
         public ExtendedPrim() {
         }
 
+        // Initialize an ExtendedPrim from the OpenSimulator structures.
+        // Note that the translation and rotation are copied into the ExtendedPrim for later coordinate modification.
         public ExtendedPrim(SceneObjectGroup pSOG, SceneObjectPart pSOP, OMV.Primitive pPrim, OMVR.FacetedMesh pFMesh) {
             SOG = pSOG;
             SOP = pSOP;
@@ -81,10 +92,11 @@ namespace org.herbal3d.BasilOS {
                     positionIsParentRelative = true;
                 }
             }
+            scale = SOP.Scale;
             faceTextures = new Dictionary<int, OMV.Primitive.TextureEntryFace>();
             faceImages = new Dictionary<int, Image>();
             faceFilenames = new Dictionary<int, string>();
-            coordSystem = new CoordSystem(CoordSystem.RightHand_Yup);    // default to SL coordinates
+            coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
         }
 
         public override int GetHashCode() {
@@ -117,6 +129,15 @@ namespace org.herbal3d.BasilOS {
         public ExtendedPrimGroup(ExtendedPrim singlePrim) : base() {
             this.Add(PrimGroupType.lod1, singlePrim);
         }
+
+        // Return the primary version of this prim which is the highest LOD verstion.
+        public ExtendedPrim primaryExtendedPrim {
+            get {
+                ExtendedPrim ret = null;
+                this.TryGetValue(PrimGroupType.lod1, out ret);
+                return ret;
+            }
+        }
     }
 
     // some entities are made of multiple prims (linksets)
@@ -146,7 +167,7 @@ namespace org.herbal3d.BasilOS {
         public void ForEachExtendedPrim(Action<ExtendedPrim> aeg) {
             this.ForEach(eGroup => {
                 eGroup.ForEach(ePGroup => {
-                    ExtendedPrim ep = ePGroup[PrimGroupType.lod1];  // the interesting one is the high rez one
+                    ExtendedPrim ep = ePGroup.primaryExtendedPrim;  // the interesting one is the high rez one
                     aeg(ep);
                 });
             });

@@ -47,7 +47,6 @@ namespace org.herbal3d.BasilOS {
         private IConfig m_sysConfig = null;
 
         protected Scene m_scene;
-        private OMV.Vector3 m_regionCenterOffset = new OMV.Vector3(128, 128, 0);
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -84,7 +83,6 @@ namespace org.herbal3d.BasilOS {
         public void AddRegion(Scene scene) {
             if (m_params.Enabled) {
                 m_scene = scene;
-                m_regionCenterOffset = new OMV.Vector3(m_scene.RegionInfo.RegionSizeX / 2, m_scene.RegionInfo.RegionSizeY / 2, 0); ;
                 m_log.DebugFormat("{0} REGION {1} ADDED", LogHeader, scene.RegionInfo.RegionName);
             }
         }
@@ -115,7 +113,7 @@ namespace org.herbal3d.BasilOS {
 
         // Selection of a particular face of a prim. Contains index and ExtendedPrim
         //     so we have both the local coords and the group coords.
-        private class MeshWithMaterial {
+        public class MeshWithMaterial {
             public ExtendedPrim containingPrim;
             public int faceIndex;
 
@@ -126,7 +124,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Lists of similar faces indexed by the texture hash
-        private class SimilarFaces : Dictionary<int, List<MeshWithMaterial>> {
+        public class SimilarFaces : Dictionary<int, List<MeshWithMaterial>> {
             public SimilarFaces() : base() {
             }
             public void AddSimilarFace(int pHash, MeshWithMaterial pFace) {
@@ -137,18 +135,13 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
-        // A collection of materials used in the scene
-        private class FaceMaterials : Dictionary<int, OMV.Primitive.TextureEntryFace> {
-        }
-
         // A structure to hold all the information about the reorganized scene
-        private class ReorganizedScene : IDisposable {
+        public class ReorganizedScene : IDisposable {
             public string regionID;
             public EntityGroupList nonStaticEntities = new EntityGroupList();
             public EntityGroupList staticEntities = new EntityGroupList();
             public SimilarFaces similarFaces = new SimilarFaces();
             public EntityGroupList rebuiltFaceEntities = new EntityGroupList();
-            public FaceMaterials faceMaterials = new FaceMaterials();
 
             public ReorganizedScene(string pRegionID) {
                 regionID = pRegionID;
@@ -159,7 +152,6 @@ namespace org.herbal3d.BasilOS {
                 staticEntities.Clear();
                 similarFaces.Clear();
                 rebuiltFaceEntities.Clear();
-                faceMaterials.Clear();
             }
         }
 
@@ -193,7 +185,8 @@ namespace org.herbal3d.BasilOS {
 
                             // Scan all the entities and extract statistics
                             if (m_params.LogConversionStats) {
-                                ExtractStatistics(reorgScene, stats);
+                                stats.ExtractStatistics(reorgScene, stats);
+                                stats.LogAll(LogHeader);
                             }
 
                             // print out information about the similar faces
@@ -274,6 +267,9 @@ namespace org.herbal3d.BasilOS {
                         // If scaling is done in the mesh, do it now
                         if (!m_params.DisplayTimeScaling) {
                             PrimToMesh.ScaleMeshes(ePrimGroup);
+                            foreach (ExtendedPrim ep in ePrimGroup.Values) {
+                                ep.scale = new OMV.Vector3(1, 1, 1);
+                            }
                         }
 
                         // The prims in the group need to be decorated with texture/image information
@@ -305,36 +301,34 @@ namespace org.herbal3d.BasilOS {
         private void UpdateTextureInfo(ExtendedPrimGroup epGroup, OMV.Primitive pPrim,
                                     IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
             // m_log.DebugFormat("{0}: UpdateTextureInfo", LogHeader);
-            if (epGroup.ContainsKey(PrimGroupType.lod1)) {
-                ExtendedPrim ep = epGroup[PrimGroupType.lod1];
-                for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
-                    OMVR.Face face = ep.facetedMesh.Faces[ii];
-                    OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
-                    if (tef == null) {
-                        tef = pPrim.Textures.DefaultTexture;
-                    }
-                    // Add the texture information for the face for later reference
-                    ep.faceTextures.Add(ii, tef);
-
-                    // If the texture includes an image, read it in.
-                    OMV.UUID texID = tef.TextureID;
-                    if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
-                        GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
-                            .Then(theImage => {
-                                ep.faceImages.Add(ii, theImage);
-                                string imageFilename = null;
-                                string imageURI = null;
-                                CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out imageFilename, out imageURI);
-                                ep.faceFilenames.Add(ii, imageFilename);
-                            })
-                            .Catch(e => {
-                                m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
-                            });
-                    }
-
-                    // While we're in the neighborhood, map the texture coords based on the prim information
-                    pMesher.UpdateCoords(face, tef);
+            ExtendedPrim ep = epGroup.primaryExtendedPrim;
+            for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
+                OMVR.Face face = ep.facetedMesh.Faces[ii];
+                OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
+                if (tef == null) {
+                    tef = pPrim.Textures.DefaultTexture;
                 }
+                // Add the texture information for the face for later reference
+                ep.faceTextures.Add(ii, tef);
+
+                // If the texture includes an image, read it in.
+                OMV.UUID texID = tef.TextureID;
+                if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
+                    GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
+                        .Then(theImage => {
+                            ep.faceImages.Add(ii, theImage);
+                            string imageFilename = null;
+                            string imageURI = null;
+                            CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out imageFilename, out imageURI);
+                            ep.faceFilenames.Add(ii, imageFilename);
+                        })
+                        .Catch(e => {
+                            m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
+                        });
+                }
+
+                // While we're in the neighborhood, map the texture coords based on the prim information
+                pMesher.UpdateCoords(face, tef);
             }
         }
 
@@ -365,48 +359,6 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
-        // Gather statistics
-        private void ExtractStatistics(ReorganizedScene reorgScene, BasilStats stats) {
-            stats.numEntities = reorgScene.staticEntities.Count + reorgScene.nonStaticEntities.Count;
-            stats.numStaticEntities = reorgScene.staticEntities.Count;
-
-            reorgScene.nonStaticEntities.ForEach(eGroup => {
-                if (eGroup.Count > 1) {
-                    // if the entity is made of multiple pieces, they are a linkset
-                    stats.numLinksets++;
-                }
-            });
-            reorgScene.nonStaticEntities.ForEachExtendedPrim(ep => {
-                if (ep.facetedMesh != null) {
-                    stats.numFaces = ep.facetedMesh.Faces.Count;
-                }
-            });
-
-            reorgScene.staticEntities.ForEach(eGroup => {
-                if (eGroup.Count > 1) {
-                    stats.numStaticLinksets++;
-                }
-            });
-            stats.numLinksets += stats.numStaticLinksets;
-            reorgScene.staticEntities.ForEachExtendedPrim(ep => {
-                if (ep.facetedMesh != null) {
-                    stats.numFaces = ep.facetedMesh.Faces.Count;
-                }
-            });
-
-            foreach (KeyValuePair<int, OMV.Primitive.TextureEntryFace> kvp in reorgScene.faceMaterials) {
-                OMV.UUID textureID = kvp.Value.TextureID;
-                if (!stats.textureIDs.Contains(textureID)) {
-                    stats.textureIDs.Add(textureID);
-                }
-            }
-
-            stats.numMaterials = reorgScene.faceMaterials.Count;
-
-            stats.LogAll(LogHeader);
-
-        }
-
         // Pass over all the converted entities and sort into types of meshes.
         // Entities with scripts are deemed to be non-static. Everything else is static.
         // For the static elements, group all the mesh faces that have common textures/materials.
@@ -417,16 +369,12 @@ namespace org.herbal3d.BasilOS {
                 // For each prim in the entity
                 eGroup.ForEach(ePGroup => {
                     // only check for the primary mesh
-                    if (ePGroup.ContainsKey(PrimGroupType.lod1)) {
-                        ExtendedPrim ep = ePGroup[PrimGroupType.lod1];
-                        if (!IsStaticShape(ep)) {
-                            // If the prim has a script, it's a different layer
-                            // If any of the prims in a linkset have a script, the whole entity is not static
-                            isStatic = false;
-                        }
-                    }
-                    else {
-                        m_log.ErrorFormat("{0} Prim didn't have primary mesh. ID={1}", LogHeader, eGroup.SOG.UUID);
+                    ExtendedPrim ep = ePGroup.primaryExtendedPrim;
+                    if (!IsStaticShape(ep)) {
+                        // If the prim has a script, it's a different layer
+                        // If any of the prims in a linkset have a script, the whole entity is not static
+                        isStatic = false;
+                        m_log.DebugFormat("{0} SOP {1} is not static", LogHeader, ep.SOP.UUID);
                     }
                 });
                 if (isStatic) {
@@ -438,8 +386,8 @@ namespace org.herbal3d.BasilOS {
                     reorgScene.nonStaticEntities.Add(eGroup);
                 }
             });
-            // m_log.DebugFormat("{0} {1} CHECK num script elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
-            // m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
+            m_log.DebugFormat("{0} {1} CHECK num dynmaic elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
+            m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
 
             // Go through all the static items and make a list of all the meshes with similar textures
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
@@ -448,34 +396,13 @@ namespace org.herbal3d.BasilOS {
                 int numFaces = ep.facetedMesh.Faces.Count;
                 for (int ii = 0; ii < numFaces; ii++) {
                     OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
-                    if (tef != null) {
-                        int hashCode = tef.GetHashCode();
-                        reorgScene.similarFaces.AddSimilarFace(hashCode, new MeshWithMaterial(ep, ii));
-
-                        // Also create a collection of all the materails being used in the scene
-                        if (!reorgScene.faceMaterials.ContainsKey(hashCode)) {
-                            reorgScene.faceMaterials.Add(hashCode, tef);
-                        }
+                    if (tef == null) {
+                        tef = tex.DefaultTexture;
                     }
+                    int hashCode = tef.GetHashCode();
+                    reorgScene.similarFaces.AddSimilarFace(hashCode, new MeshWithMaterial(ep, ii));
                 }
             });
-
-            // Scan through the non-static entities and add materials to the material collection
-            reorgScene.nonStaticEntities.ForEachExtendedPrim(ep => {
-                OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
-                int numFaces = ep.facetedMesh.Faces.Count;
-                for (int ii = 0; ii < numFaces; ii++) {
-                    OMV.Primitive.TextureEntryFace tef = ep.faceTextures[ii];
-                    if (tef != null) {
-                        int hashCode = tef.GetHashCode();
-                        if (!reorgScene.faceMaterials.ContainsKey(hashCode)) {
-                            reorgScene.faceMaterials.Add(hashCode, tef);
-                        }
-                    }
-                }
-            });
-
-            m_log.InfoFormat("{0} {1} CHECK num similar faces={2}", LogHeader, m_scene.Name, reorgScene.similarFaces.Count);
         }
 
         // Test to see if the object is dynamic (scripted or whatever and might change) vs
@@ -676,7 +603,7 @@ namespace org.herbal3d.BasilOS {
             // Find the root prim of this linkset
             ExtendedPrim rootPrim = null;
             eg.ForEach(epg => {
-                ExtendedPrim ep = epg[PrimGroupType.lod1];
+                ExtendedPrim ep = epg.primaryExtendedPrim;
                 if (ep.SOP.IsRoot) {
                     rootPrim = ep;
                 }
@@ -685,7 +612,7 @@ namespace org.herbal3d.BasilOS {
 
             // Add any children of the root node
             eg.ForEach(epg => {
-                ExtendedPrim ep = epg[PrimGroupType.lod1];
+                ExtendedPrim ep = epg.primaryExtendedPrim;
                 if (!ep.SOP.IsRoot) {
                     GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, null, ep);
                     gRootNode.children.Add(gChildNode);
@@ -710,30 +637,14 @@ namespace org.herbal3d.BasilOS {
 
             newNode.name = ep.SOP.Name;
 
-            if (ep.SOP.IsRoot) {
-                newNode.translation = ep.SOP.GetWorldPosition();
-                newNode.rotation = ep.SOP.GetWorldRotation();
-                // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. IsRoot. pos={1}, rot={2}",
-                //             LogHeader, ret.translation, ret.rotation);
-            }
-            else {
-                newNode.translation = ep.SOP.OffsetPosition;
-                newNode.rotation = ep.SOP.RotationOffset;
-                // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Child. pos={1}, rot={2}",
-                //             LogHeader, ret.translation, ret.rotation);
-            }
-
-            if (m_params.DisplayTimeScaling) {
-                newNode.scale = ep.SOP.Scale;
-            }
-            else {
-                newNode.scale = new OMV.Vector3(1, 1, 1);
-                // The following is needed if the child is it's own mesh separate from the parent
-                // if (!ep.SOP.IsRoot) {
-                //     // If this is a child, divide out the scale of the parent
-                //     ret.scale /= ep.SOG.RootPart.Scale;
-                // }
-            }
+            newNode.translation = ep.translation;
+            newNode.rotation = ep.rotation;
+            newNode.scale = ep.scale;
+            // The following is needed if the child is it's own mesh separate from the parent
+            // if (!ep.SOP.IsRoot) {
+            //     // If this is a child, divide out the scale of the parent
+            //     ret.scale /= ep.SOG.RootPart.Scale;
+            // }
 
             int numFace = 0;
             ep.facetedMesh.Faces.ForEach(face => {
@@ -749,22 +660,29 @@ namespace org.herbal3d.BasilOS {
             return newNode;
         }
 
+        // Convert the positions and all the vertices in an ExtendedPrim from one
+        //     coordinate space to another. ExtendedPrim.coordSpace gives the current
+        //     coordinates and we specify a new one here.
+        // This is not a general solution -- it pretty much only works to convert
+        //     right-handed,Z-up coordinates (OpenSimulator) to right-handed,Y-up
+        //     (OpenGL).
+        private OMV.Quaternion m_90AroundXAxis = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
         public void FixCoordinates(ExtendedPrim ep, CoordSystem newCoords) {
+            m_log.DebugFormat("{0} FixCoordinates. ep={1}, from={2}, to={3}",
+                                LogHeader, ep.SOP.UUID, ep.coordSystem.SystemName, newCoords.SystemName);
             if (ep.coordSystem.system != newCoords.system) {
+
+                // Fix the location in space
+                OMV.Vector3 transBefore = ep.translation;   // DEBUG DEBUG
+                OMV.Quaternion rotBefore = ep.rotation;   // DEBUG DEBUG
+                FixOneCoordinate(ref ep.translation, ep.coordSystem, newCoords);
+                ep.rotation = OMV.Quaternion.Normalize(m_90AroundXAxis * ep.rotation);
+                m_log.DebugFormat("{0} FixCoordinates. tBefore={1}, tAfter={2}, rBefore={3}, rAfter={4}",
+                        LogHeader, transBefore, ep.translation, rotBefore, ep.rotation);
 
                 // Go through all the vertices and change the coordinate system
                 PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
-                    // This doesn't cover all cases so this routine is not general purpose
-                    if (ep.coordSystem.getUpDimension != newCoords.getUpDimension) {
-                        // The only things that change are Y and Z. Swap same.
-                        float temp = vert.Position.Y;
-                        vert.Position.Y = vert.Position.Z;
-                        vert.Position.Z = temp;
-                    }
-                    if (ep.coordSystem.isHandednessChanging(newCoords)) {
-                        // Front and back is changing
-                        vert.Position.X = m_scene.RegionInfo.RegionSizeX - vert.Position.X;
-                    }
+                    FixOneCoordinate(ref vert.Position, ep.coordSystem, newCoords);
                 });
 
                 // The ExtendedPrim is all converted
@@ -772,17 +690,19 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
-        // Adjust the coordinates for a root object to convert Z-up coordinate to Y-up coordinate
-        // Second Life is right handed, Z-up
-        // OpenGL is right handed, Y-up
-        // others: Babalon, Unity, DirectX, are left handed, Y-up
-        private OMV.Quaternion m_90AroundXAxis = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
-        public void FixCoordinatesXX(ExtendedPrim ep, ref OMV.Vector3 pos, ref OMV.Quaternion rot) {
-            // right handed, Z-up to right handed, Y-up is invert X and rotate 90 around X axis
-            OMV.Vector3 newPos = pos - m_regionCenterOffset;
-            newPos.X = -newPos.X;
-            pos = (newPos + m_regionCenterOffset) * m_90AroundXAxis;
-            rot = m_90AroundXAxis * rot;
+        // Convert a single point in space from the previous coordinate system to the next.
+        // This doesn't cover all cases so this routine is not general purpose
+        public void FixOneCoordinate(ref OMV.Vector3 vect, CoordSystem fromCoords, CoordSystem toCoords) {
+            if (fromCoords.getUpDimension != toCoords.getUpDimension) {
+                // The only things that change are Y and Z. Swap same.
+                float temp = vect.Y;
+                vect.Y = vect.Z;
+                vect.Z = temp;
+            }
+            if (fromCoords.isHandednessChanging(toCoords)) {
+                // Front and back is changing
+                vect.X = m_scene.RegionInfo.RegionSizeX - vect.X;
+            }
         }
 
         /// <summary>
