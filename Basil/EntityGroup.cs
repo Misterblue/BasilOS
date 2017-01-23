@@ -131,7 +131,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Return the primary version of this prim which is the highest LOD verstion.
-        public ExtendedPrim primaryExtendedPrim {
+        public ExtendedPrim primaryExtendePrim {
             get {
                 ExtendedPrim ret = null;
                 this.TryGetValue(PrimGroupType.lod1, out ret);
@@ -167,7 +167,7 @@ namespace org.herbal3d.BasilOS {
         public void ForEachExtendedPrim(Action<ExtendedPrim> aeg) {
             this.ForEach(eGroup => {
                 eGroup.ForEach(ePGroup => {
-                    ExtendedPrim ep = ePGroup.primaryExtendedPrim;  // the interesting one is the high rez one
+                    ExtendedPrim ep = ePGroup.primaryExtendePrim;  // the interesting one is the high rez one
                     aeg(ep);
                 });
             });

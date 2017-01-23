@@ -301,7 +301,7 @@ namespace org.herbal3d.BasilOS {
         private void UpdateTextureInfo(ExtendedPrimGroup epGroup, OMV.Primitive pPrim,
                                     IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
             // m_log.DebugFormat("{0}: UpdateTextureInfo", LogHeader);
-            ExtendedPrim ep = epGroup.primaryExtendedPrim;
+            ExtendedPrim ep = epGroup.primaryExtendePrim;
             for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
                 OMVR.Face face = ep.facetedMesh.Faces[ii];
                 OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
@@ -369,12 +369,11 @@ namespace org.herbal3d.BasilOS {
                 // For each prim in the entity
                 eGroup.ForEach(ePGroup => {
                     // only check for the primary mesh
-                    ExtendedPrim ep = ePGroup.primaryExtendedPrim;
+                    ExtendedPrim ep = ePGroup.primaryExtendePrim;
                     if (!IsStaticShape(ep)) {
                         // If the prim has a script, it's a different layer
                         // If any of the prims in a linkset have a script, the whole entity is not static
                         isStatic = false;
-                        m_log.DebugFormat("{0} SOP {1} is not static", LogHeader, ep.SOP.UUID);
                     }
                 });
                 if (isStatic) {
@@ -386,8 +385,8 @@ namespace org.herbal3d.BasilOS {
                     reorgScene.nonStaticEntities.Add(eGroup);
                 }
             });
-            m_log.DebugFormat("{0} {1} CHECK num dynmaic elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
-            m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
+            // m_log.DebugFormat("{0} {1} CHECK num dynmaic elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
+            // m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
 
             // Go through all the static items and make a list of all the meshes with similar textures
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
@@ -603,7 +602,7 @@ namespace org.herbal3d.BasilOS {
             // Find the root prim of this linkset
             ExtendedPrim rootPrim = null;
             eg.ForEach(epg => {
-                ExtendedPrim ep = epg.primaryExtendedPrim;
+                ExtendedPrim ep = epg.primaryExtendePrim;
                 if (ep.SOP.IsRoot) {
                     rootPrim = ep;
                 }
@@ -612,7 +611,7 @@ namespace org.herbal3d.BasilOS {
 
             // Add any children of the root node
             eg.ForEach(epg => {
-                ExtendedPrim ep = epg.primaryExtendedPrim;
+                ExtendedPrim ep = epg.primaryExtendePrim;
                 if (!ep.SOP.IsRoot) {
                     GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, null, ep);
                     gRootNode.children.Add(gChildNode);
@@ -632,6 +631,7 @@ namespace org.herbal3d.BasilOS {
 
             // Convert the extended prim's coordinate system to OpenGL-ness
             FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Yup));
+            // FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Zup)); // DEBUG DEBUG -- No change
 
             GltfNode newNode = new GltfNode(pGltf, containingScene, id);
 
@@ -667,22 +667,31 @@ namespace org.herbal3d.BasilOS {
         //     right-handed,Z-up coordinates (OpenSimulator) to right-handed,Y-up
         //     (OpenGL).
         private OMV.Quaternion m_90AroundXAxis = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
+        const float DEG_TO_RAD = 0.017453292519943295769236907684886f;
         public void FixCoordinates(ExtendedPrim ep, CoordSystem newCoords) {
-            m_log.DebugFormat("{0} FixCoordinates. ep={1}, from={2}, to={3}",
-                                LogHeader, ep.SOP.UUID, ep.coordSystem.SystemName, newCoords.SystemName);
             if (ep.coordSystem.system != newCoords.system) {
+
+                OMV.Matrix4 coordTransform = OMV.Matrix4.Identity;
+                if (ep.coordSystem.getUpDimension == CoordSystem.Zup
+                    && newCoords.getUpDimension == CoordSystem.Yup) {
+                    // The one thing we know to do is to rotate around X
+                    coordTransform = OMV.Matrix4.CreateFromEulers(90.0f * DEG_TO_RAD, 0.0f, 0.0f);
+                }
 
                 // Fix the location in space
                 OMV.Vector3 transBefore = ep.translation;   // DEBUG DEBUG
                 OMV.Quaternion rotBefore = ep.rotation;   // DEBUG DEBUG
-                FixOneCoordinate(ref ep.translation, ep.coordSystem, newCoords);
-                ep.rotation = OMV.Quaternion.Normalize(m_90AroundXAxis * ep.rotation);
+                FixOneCoordinate(ref ep.translation, coordTransform);
+                // if (!ep.positionIsParentRelative) {
+                //     ep.rotation = OMV.Quaternion.CreateFromRotationMatrix(OMV.Matrix4.Transform(coordTransform, ep.rotation));
+                // }
                 m_log.DebugFormat("{0} FixCoordinates. tBefore={1}, tAfter={2}, rBefore={3}, rAfter={4}",
                         LogHeader, transBefore, ep.translation, rotBefore, ep.rotation);
 
                 // Go through all the vertices and change the coordinate system
                 PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
-                    FixOneCoordinate(ref vert.Position, ep.coordSystem, newCoords);
+                    FixOneCoordinate(ref vert.Position, coordTransform);
+                    FixOneCoordinate(ref vert.Normal, coordTransform);
                 });
 
                 // The ExtendedPrim is all converted
@@ -692,17 +701,9 @@ namespace org.herbal3d.BasilOS {
 
         // Convert a single point in space from the previous coordinate system to the next.
         // This doesn't cover all cases so this routine is not general purpose
-        public void FixOneCoordinate(ref OMV.Vector3 vect, CoordSystem fromCoords, CoordSystem toCoords) {
-            if (fromCoords.getUpDimension != toCoords.getUpDimension) {
-                // The only things that change are Y and Z. Swap same.
-                float temp = vect.Y;
-                vect.Y = vect.Z;
-                vect.Z = temp;
-            }
-            if (fromCoords.isHandednessChanging(toCoords)) {
-                // Front and back is changing
-                vect.X = m_scene.RegionInfo.RegionSizeX - vect.X;
-            }
+        public void FixOneCoordinate(ref OMV.Vector3 vect, OMV.Matrix4 coordTransform) {
+            OMV.Vector3 newVect = OMV.Vector3.TransformNormal(vect, coordTransform);
+            vect = newVect;
         }
 
         /// <summary>
