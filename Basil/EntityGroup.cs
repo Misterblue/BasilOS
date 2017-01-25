@@ -63,6 +63,7 @@ namespace org.herbal3d.BasilOS {
         public OMV.Vector3 translation;
         public OMV.Quaternion rotation;
         public OMV.Vector3 scale;
+        public OMV.Matrix4? transform;
         public bool positionIsParentRelative;
         // Texture information for the faces
         public Dictionary<int, OMV.Primitive.TextureEntryFace> faceTextures { get; set; }
@@ -93,6 +94,7 @@ namespace org.herbal3d.BasilOS {
                 }
             }
             scale = SOP.Scale;
+            transform = null;
             faceTextures = new Dictionary<int, OMV.Primitive.TextureEntryFace>();
             faceImages = new Dictionary<int, Image>();
             faceFilenames = new Dictionary<int, string>();

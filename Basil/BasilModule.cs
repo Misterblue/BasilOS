@@ -47,6 +47,7 @@ namespace org.herbal3d.BasilOS {
         private IConfig m_sysConfig = null;
 
         protected Scene m_scene;
+        OMV.Vector3 m_regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -83,6 +84,9 @@ namespace org.herbal3d.BasilOS {
         public void AddRegion(Scene scene) {
             if (m_params.Enabled) {
                 m_scene = scene;
+                m_regionDimensions.X = m_scene.RegionInfo.RegionSizeX;
+                m_regionDimensions.Y = m_scene.RegionInfo.RegionSizeY;
+
                 m_log.DebugFormat("{0} REGION {1} ADDED", LogHeader, scene.RegionInfo.RegionName);
             }
         }
@@ -251,11 +255,19 @@ namespace org.herbal3d.BasilOS {
             foreach (SceneObjectPart sop in sog.Parts) {
 
                 // DEBUG DEBUG
+                /*
                 m_log.DebugFormat("{0} SOP {1} wPos={2}, gPos={3}, aPos={4}, oPos={5}, rOff={6}, wRot={7}, scale={8}",
                         LogHeader, sop.UUID,
                         sop.GetWorldPosition(),
                         sop.GroupPosition, sop.AbsolutePosition, sop.OffsetPosition,
                         sop.RotationOffset, sop.GetWorldRotation(), sop.Scale);
+                */
+                OMV.Vector3 rots = new OMV.Vector3();
+                float radtodeg = 57.2958f;
+                sop.GetWorldRotation().GetEulerAngles(out rots.X, out rots.Y, out rots.Z);
+                m_log.DebugFormat("{0} SOP {1} wPos={2}, rot={3}, scale={4}",
+                        LogHeader, sop.UUID,
+                        sop.GetWorldPosition(), rots * radtodeg, sop.Scale);
                 // END DEBUG DEBUG
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
@@ -640,6 +652,9 @@ namespace org.herbal3d.BasilOS {
             newNode.translation = ep.translation;
             newNode.rotation = ep.rotation;
             newNode.scale = ep.scale;
+            if (ep.transform != null) {
+                newNode.matrix = (OMV.Matrix4)ep.transform;
+            }
             // The following is needed if the child is it's own mesh separate from the parent
             // if (!ep.SOP.IsRoot) {
             //     // If this is a child, divide out the scale of the parent
@@ -666,32 +681,40 @@ namespace org.herbal3d.BasilOS {
         // This is not a general solution -- it pretty much only works to convert
         //     right-handed,Z-up coordinates (OpenSimulator) to right-handed,Y-up
         //     (OpenGL).
-        private OMV.Quaternion m_90AroundXAxis = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
-        const float DEG_TO_RAD = 0.017453292519943295769236907684886f;
         public void FixCoordinates(ExtendedPrim ep, CoordSystem newCoords) {
             if (ep.coordSystem.system != newCoords.system) {
 
                 OMV.Matrix4 coordTransform = OMV.Matrix4.Identity;
                 if (ep.coordSystem.getUpDimension == CoordSystem.Zup
                     && newCoords.getUpDimension == CoordSystem.Yup) {
-                    // The one thing we know to do is to rotate around X
-                    coordTransform = OMV.Matrix4.CreateFromEulers(90.0f * DEG_TO_RAD, 0.0f, 0.0f);
+                    // The one thing we know to do is change from Zup to Yup
+                    coordTransform = new OMV.Matrix4(
+                                    1,  0,  0,  0,
+                                    0,  0, -1,  0,
+                                    0,  1,  0,  0,
+                                    0,  0,  0,  1);
                 }
+                m_log.DebugFormat("{0} coordTransform={1}", LogHeader, coordTransform);
 
                 // Fix the location in space
                 OMV.Vector3 transBefore = ep.translation;   // DEBUG DEBUG
                 OMV.Quaternion rotBefore = ep.rotation;   // DEBUG DEBUG
-                FixOneCoordinate(ref ep.translation, coordTransform);
+                if (!ep.positionIsParentRelative) {
+                    ep.translation = FixOneCoordinate(ep.translation, coordTransform, m_regionDimensions);
+                }
+                else {
+                    ep.translation = FixOneCoordinate(ep.translation, coordTransform, OMV.Vector3.Zero);
+                }
                 // if (!ep.positionIsParentRelative) {
-                //     ep.rotation = OMV.Quaternion.CreateFromRotationMatrix(OMV.Matrix4.Transform(coordTransform, ep.rotation));
+                    ep.rotation = FixOneRotation(ep.rotation, coordTransform);
                 // }
                 m_log.DebugFormat("{0} FixCoordinates. tBefore={1}, tAfter={2}, rBefore={3}, rAfter={4}",
                         LogHeader, transBefore, ep.translation, rotBefore, ep.rotation);
 
                 // Go through all the vertices and change the coordinate system
                 PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
-                    FixOneCoordinate(ref vert.Position, coordTransform);
-                    FixOneCoordinate(ref vert.Normal, coordTransform);
+                    vert.Position = FixOneCoordinate(vert.Position, coordTransform, OMV.Vector3.Zero);
+                    vert.Normal = FixOneCoordinate(vert.Normal, coordTransform, OMV.Vector3.Zero);
                 });
 
                 // The ExtendedPrim is all converted
@@ -700,10 +723,33 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Convert a single point in space from the previous coordinate system to the next.
-        // This doesn't cover all cases so this routine is not general purpose
-        public void FixOneCoordinate(ref OMV.Vector3 vect, OMV.Matrix4 coordTransform) {
+        // If values go negative, presume the direction of that dimension changed and make positive on the other
+        //     side of the region.
+        public OMV.Vector3 FixOneCoordinate(OMV.Vector3 vect, OMV.Matrix4 coordTransform, OMV.Vector3 area) {
             OMV.Vector3 newVect = OMV.Vector3.TransformNormal(vect, coordTransform);
-            vect = newVect;
+            if (newVect.X < 0) newVect.X = newVect.X + area.X;
+            if (newVect.Y < 0) newVect.Y = newVect.Y + area.Y;
+            if (newVect.Z < 0) newVect.Z = newVect.Z + area.Y;
+            return newVect;
+        }
+
+        public OMV.Quaternion FixOneRotation(OMV.Quaternion rot, OMV.Matrix4 coordTransform) {
+            OMV.Vector3 eulers = new OMV.Vector3();
+            rot.GetEulerAngles(out eulers.X, out eulers.Y, out eulers.Z);
+            // It looks like GetEulerAngles will return two PIs for a non-changing double axis inversion. Odd.
+            const float fudge = 3.141590f;
+            if (eulers.X > fudge && eulers.Z > fudge) {
+                eulers.X = 0;
+                eulers.Z = 0;
+            }
+            eulers.X = eulers.X > fudge ? 0f : eulers.X;
+            eulers.Y = eulers.Y > fudge ? 0f : eulers.Y;
+            eulers.Z = eulers.Z > fudge ? 0f : eulers.Z;
+            OMV.Vector3 convEulers = OMV.Vector3.TransformNormal(eulers, coordTransform);
+            OMV.Quaternion after = OMV.Quaternion.CreateFromEulers(convEulers.X, convEulers.Y, convEulers.Z);
+            m_log.DebugFormat("{0} FixOneRotation. before={1}, eulers={2}, convEulers={3}, after={4}",
+                        LogHeader, rot, eulers, convEulers, after);
+            return after;
         }
 
         /// <summary>
