@@ -699,11 +699,13 @@ namespace org.herbal3d.BasilOS {
                 // Fix the location in space
                 OMV.Vector3 transBefore = ep.translation;   // DEBUG DEBUG
                 OMV.Quaternion rotBefore = ep.rotation;   // DEBUG DEBUG
-                if (!ep.positionIsParentRelative) {
-                    ep.translation = FixOneCoordinate(ep.translation, coordTransform, m_regionDimensions);
+                if (ep.positionIsParentRelative) {
+                    ep.translation = FixOneCoordinate(ep.translation, coordTransform);
                 }
                 else {
-                    ep.translation = FixOneCoordinate(ep.translation, coordTransform, OMV.Vector3.Zero);
+                    // If world relative, fix negative dimensions to be within region
+                    // ep.translation = FixOneCoordinate(ep.translation, coordTransform, m_regionDimensions);
+                    ep.translation = FixOneCoordinate(ep.translation, coordTransform);
                 }
                 // if (!ep.positionIsParentRelative) {
                     ep.rotation = FixOneRotation(ep.rotation, coordTransform);
@@ -713,8 +715,8 @@ namespace org.herbal3d.BasilOS {
 
                 // Go through all the vertices and change the coordinate system
                 PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
-                    vert.Position = FixOneCoordinate(vert.Position, coordTransform, OMV.Vector3.Zero);
-                    vert.Normal = FixOneCoordinate(vert.Normal, coordTransform, OMV.Vector3.Zero);
+                    vert.Position = FixOneCoordinate(vert.Position, coordTransform);
+                    vert.Normal = FixOneCoordinate(vert.Normal, coordTransform);
                 });
 
                 // The ExtendedPrim is all converted
@@ -725,11 +727,8 @@ namespace org.herbal3d.BasilOS {
         // Convert a single point in space from the previous coordinate system to the next.
         // If values go negative, presume the direction of that dimension changed and make positive on the other
         //     side of the region.
-        public OMV.Vector3 FixOneCoordinate(OMV.Vector3 vect, OMV.Matrix4 coordTransform, OMV.Vector3 area) {
+        public OMV.Vector3 FixOneCoordinate(OMV.Vector3 vect, OMV.Matrix4 coordTransform) {
             OMV.Vector3 newVect = OMV.Vector3.TransformNormal(vect, coordTransform);
-            if (newVect.X < 0) newVect.X = newVect.X + area.X;
-            if (newVect.Y < 0) newVect.Y = newVect.Y + area.Y;
-            if (newVect.Z < 0) newVect.Z = newVect.Z + area.Y;
             return newVect;
         }
 
@@ -742,9 +741,6 @@ namespace org.herbal3d.BasilOS {
                 eulers.X = 0;
                 eulers.Z = 0;
             }
-            eulers.X = eulers.X > fudge ? 0f : eulers.X;
-            eulers.Y = eulers.Y > fudge ? 0f : eulers.Y;
-            eulers.Z = eulers.Z > fudge ? 0f : eulers.Z;
             OMV.Vector3 convEulers = OMV.Vector3.TransformNormal(eulers, coordTransform);
             OMV.Quaternion after = OMV.Quaternion.CreateFromEulers(convEulers.X, convEulers.Y, convEulers.Z);
             m_log.DebugFormat("{0} FixOneRotation. before={1}, eulers={2}, convEulers={3}, after={4}",

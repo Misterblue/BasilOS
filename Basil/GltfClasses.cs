@@ -281,7 +281,12 @@ namespace org.herbal3d.BasilOS {
                     ext.technique = "LAMBERT";  // or 'BLINN' or 'PHONG'
 
                     OMV.Color4 aColor = mesh.underlyingMesh.TextureFace.RGBA;
-                    ext.values.Add(GltfExtension.valAmbient, aColor);
+                    OMV.Vector3 justColor = new OMV.Vector3(aColor.R, aColor.G, aColor.B);
+                    ext.values.Add(GltfExtension.valAmbient, justColor);
+                    ext.values.Add(GltfExtension.valDiffuse, justColor);
+                    // ext.values.Add(GltfExtension.valSpecular, justColor);    // not a value in LAMBERT
+                    ext.values.Add(GltfExtension.valTransparency, aColor.A);
+                    ext.values.Add(GltfExtension.valEmission, new OMV.Vector3(0.05f, 0.05f, 0.05f));
 
                     OMV.UUID texID = mesh.underlyingMesh.TextureFace.TextureID;
                     GltfTexture theTexture = null;
@@ -302,6 +307,9 @@ namespace org.herbal3d.BasilOS {
                             }
                             theTexture.source = theImage;
                         }
+                        ext.values.Remove(GltfExtension.valTransparent);
+                        ext.values.Add(GltfExtension.valTransparent, "true");
+                        ext.values.Remove(GltfExtension.valDiffuse);
                         ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
                     }
 
