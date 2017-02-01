@@ -181,14 +181,13 @@ namespace org.herbal3d.BasilOS {
             m_mesher = null;
         }
 
-        public void UpdateCoords(OMVR.Face pFace, OMV.Primitive.TextureEntryFace pTef) {
-            if (pFace.Vertices != null) {
-                m_mesher.TransformTexCoords(pFace.Vertices, pFace.Center, pTef, new OMV.Vector3(1,1,1));
+        public void UpdateCoords(FaceInfo faceInfo, OMV.Primitive prim, OMVR.Face pFace) {
+            if (faceInfo.vertexs != null) {
+                m_mesher.TransformTexCoords(faceInfo.vertexs, pFace.Center, faceInfo.textureEntry,  prim.Scale);
             }
         }
 
         // Walk through all the vertices and scale the included meshes
-
         public static void ScaleMeshes(ExtendedPrimGroup ePG) {
             foreach (ExtendedPrim ep in ePG.Values) {
                 OMV.Vector3 scale = ep.primitive.Scale;
@@ -204,15 +203,17 @@ namespace org.herbal3d.BasilOS {
         public delegate void OperateOnVertex(ref OMVR.Vertex vert);
         public static void OnAllVertex(ExtendedPrim ep, OperateOnVertex vertOp) {
             // DEBUG DEBUG DumpScaleTest(ep, "Before");
-            for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
-                OMVR.Face aFace = ep.facetedMesh.Faces[ii];
-                for (int jj = 0; jj < aFace.Vertices.Count; jj++) {
-                    OMVR.Vertex aVert = aFace.Vertices[jj];
+            for (int ii = 0; ii < ep.faces.Count; ii++) {
+                FaceInfo aFace = ep.faces[ii];
+                for (int jj = 0; jj < aFace.vertexs.Count; jj++) {
+                    OMVR.Vertex aVert = aFace.vertexs[jj];
                     vertOp(ref aVert);
-                    aFace.Vertices[jj] = aVert;
+                    aFace.vertexs[jj] = aVert;
                 }
-                ep.facetedMesh.Faces[ii] = aFace;
+                ep.faces[ii] = aFace;
             }
         }
+
+
     }
 }

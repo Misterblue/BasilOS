@@ -14,12 +14,15 @@ using OpenSim.Region.Framework.Scenes;
 
 namespace org.herbal3d.BasilOS {
     public class CoordSystem {
-        public const int Handedness = 0x200;    // the bit that specifies the handedness
-        public const int UpDimension = 0x00F;   // the field that specifies the up dimension
+        public const int Handedness = 0x200;    // bit that specifies the handedness
+        public const int UpDimension = 0x00F;   // field that specifies the up dimension
+        public const int UVOrigin = 0x030;      // field that specifies UV origin location
         public const int RightHand = 0x000;
         public const int LeftHand = 0x200;
         public const int Yup = 0x001;
         public const int Zup = 0x002;
+        public const int UVOriginUpperLeft = 0x000; // most of the world has origin in upper left
+        public const int UVOriginLowerLeft = 0x010; // OpenGL specifies UV origin in lower left
         public const int RightHand_Yup = RightHand + Yup;
         public const int LeftHand_Yup = LeftHand + Yup;
         public const int RightHand_Zup = RightHand + Zup;
@@ -37,6 +40,7 @@ namespace org.herbal3d.BasilOS {
         }
         public int getUpDimension { get  { return system & UpDimension; } }
         public int getHandedness { get  { return system & Handedness; } }
+        public int getUVOrigin { get  { return system & UVOrigin; } }
         public bool isHandednessChanging(CoordSystem nextSystem) {
             return (system & Handedness) != (nextSystem.system & Handedness);
         }
@@ -47,6 +51,34 @@ namespace org.herbal3d.BasilOS {
             { LeftHand_Yup, "LeftHand,Y-up" },
             { LeftHand_Zup, "LeftHand,Z-up" }
         };
+    }
+
+    public class FaceInfo {
+        public int num;                 // number of this face on the prim
+        public List<OMVR.Vertex> vertexs;
+        public List<ushort> indices;
+
+        public ExtendedPrim containingPrim;
+
+        // Information about the material decorating the vertices
+        public OMV.Primitive.TextureEntryFace textureEntry;
+        public OMV.UUID? textureID;     // UUID of the texture if there is one
+        public Image faceImage;
+        public bool hasAlpha;          // true if there is some transparancy in the surface
+        public bool fullAlpha;         // true if the alpha is everywhere
+        public string imageFilename;    // filename built for this face material
+        public string imageURI;    // filename built for this face material
+
+        public FaceInfo(int pNum, ExtendedPrim pContainingPrim) {
+            num = pNum;
+            containingPrim = pContainingPrim;
+            vertexs = new List<OMVR.Vertex>();
+            indices = new List<ushort>();
+            hasAlpha = false;
+            fullAlpha = false;
+            faceImage = null;       // flag saying if an image is present
+            textureID = null;       // flag saying if an image is present
+        }
     }
 
     // An extended description of an entity that includes the original
@@ -65,13 +97,15 @@ namespace org.herbal3d.BasilOS {
         public OMV.Vector3 scale;
         public OMV.Matrix4? transform;
         public bool positionIsParentRelative;
-        // Texture information for the faces
-        public Dictionary<int, OMV.Primitive.TextureEntryFace> faceTextures { get; set; }
-        // Images for a fae if it is specified
-        public Dictionary<int, Image> faceImages { get; set; }
-        public Dictionary<int, string> faceFilenames { get; set; }
 
+        // The data is taken out of the structures above and copied here for mangling
+        public Dictionary<int, FaceInfo> faces;
+
+        // A very empty ExtendedPrim. You must initialize everything by hand after creating this.
         public ExtendedPrim() {
+            transform = null;
+            coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
+            faces = new Dictionary<int, FaceInfo>();
         }
 
         // Initialize an ExtendedPrim from the OpenSimulator structures.
@@ -95,10 +129,19 @@ namespace org.herbal3d.BasilOS {
             }
             scale = SOP.Scale;
             transform = null;
-            faceTextures = new Dictionary<int, OMV.Primitive.TextureEntryFace>();
-            faceImages = new Dictionary<int, Image>();
-            faceFilenames = new Dictionary<int, string>();
             coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
+
+            // Copy the vertex information into our face information array.
+            // Only the vertex and indices information is put into the face info.
+            //       The texture info must be added later.
+            faces = new Dictionary<int, FaceInfo>();
+            for (int ii = 0; ii < pFMesh.Faces.Count; ii++) {
+                OMVR.Face aFace = pFMesh.Faces[ii];
+                FaceInfo faceInfo = new FaceInfo(ii, this);
+                faceInfo.vertexs = aFace.Vertices.ToList();
+                faceInfo.indices = aFace.Indices.ToList();
+                faces.Add(ii, faceInfo);
+            }
         }
 
         public override int GetHashCode() {

@@ -115,25 +115,13 @@ namespace org.herbal3d.BasilOS {
                 ProcessConvert);
         }
 
-        // Selection of a particular face of a prim. Contains index and ExtendedPrim
-        //     so we have both the local coords and the group coords.
-        public class MeshWithMaterial {
-            public ExtendedPrim containingPrim;
-            public int faceIndex;
-
-            public MeshWithMaterial(ExtendedPrim pContainingPrim, int pFaceIndex) {
-                containingPrim = pContainingPrim;
-                faceIndex = pFaceIndex;
-            }
-        }
-
         // Lists of similar faces indexed by the texture hash
-        public class SimilarFaces : Dictionary<int, List<MeshWithMaterial>> {
+        public class SimilarFaces : Dictionary<int, List<FaceInfo>> {
             public SimilarFaces() : base() {
             }
-            public void AddSimilarFace(int pHash, MeshWithMaterial pFace) {
+            public void AddSimilarFace(int pHash, FaceInfo pFace) {
                 if (! this.ContainsKey(pHash)) {
-                    this.Add(pHash, new List<MeshWithMaterial>());
+                    this.Add(pHash, new List<FaceInfo>());
                 }
                 this[pHash].Add(pFace);
             }
@@ -262,12 +250,14 @@ namespace org.herbal3d.BasilOS {
                         sop.GroupPosition, sop.AbsolutePosition, sop.OffsetPosition,
                         sop.RotationOffset, sop.GetWorldRotation(), sop.Scale);
                 */
+                /*
                 OMV.Vector3 rots = new OMV.Vector3();
                 float radtodeg = 57.2958f;
                 sop.GetWorldRotation().GetEulerAngles(out rots.X, out rots.Y, out rots.Z);
                 m_log.DebugFormat("{0} SOP {1} wPos={2}, rot={3}, scale={4}",
                         LogHeader, sop.UUID,
                         sop.GetWorldPosition(), rots * radtodeg, sop.Scale);
+                */
                 // END DEBUG DEBUG
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
@@ -316,23 +306,25 @@ namespace org.herbal3d.BasilOS {
             ExtendedPrim ep = epGroup.primaryExtendePrim;
             for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
                 OMVR.Face face = ep.facetedMesh.Faces[ii];
+                FaceInfo faceInfo = ep.faces[ii];
                 OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
                 if (tef == null) {
                     tef = pPrim.Textures.DefaultTexture;
                 }
                 // Add the texture information for the face for later reference
-                ep.faceTextures.Add(ii, tef);
+                faceInfo.textureEntry = tef;
+                if (tef.RGBA.A != 255f)
+                    faceInfo.fullAlpha = true;
 
                 // If the texture includes an image, read it in.
                 OMV.UUID texID = tef.TextureID;
                 if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
+                    faceInfo.textureID = texID;
+                    CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
                     GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
                         .Then(theImage => {
-                            ep.faceImages.Add(ii, theImage);
-                            string imageFilename = null;
-                            string imageURI = null;
-                            CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out imageFilename, out imageURI);
-                            ep.faceFilenames.Add(ii, imageFilename);
+                            faceInfo.faceImage = theImage;
+                            // TODO: examine the image for alphaness
                         })
                         .Catch(e => {
                             m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
@@ -340,7 +332,7 @@ namespace org.herbal3d.BasilOS {
                 }
 
                 // While we're in the neighborhood, map the texture coords based on the prim information
-                pMesher.UpdateCoords(face, tef);
+                pMesher.UpdateCoords(faceInfo, ep.primitive, face);
             }
         }
 
@@ -404,14 +396,10 @@ namespace org.herbal3d.BasilOS {
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
             reorgScene.staticEntities.ForEachExtendedPrim(ep => {
                 OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
-                int numFaces = ep.facetedMesh.Faces.Count;
-                for (int ii = 0; ii < numFaces; ii++) {
-                    OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
-                    if (tef == null) {
-                        tef = tex.DefaultTexture;
-                    }
+                foreach (FaceInfo faceInfo in ep.faces.Values) {
+                    OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
                     int hashCode = tef.GetHashCode();
-                    reorgScene.similarFaces.AddSimilarFace(hashCode, new MeshWithMaterial(ep, ii));
+                    reorgScene.similarFaces.AddSimilarFace(hashCode, faceInfo);
                 }
             });
         }
@@ -439,16 +427,14 @@ namespace org.herbal3d.BasilOS {
                 int totalVerticesPerUnique = 0;
                 List<OMVR.Vertex> uniqueVertices = new List<OMVR.Vertex>();
 
-                List<MeshWithMaterial> similar = reorgScene.similarFaces[key];
-                similar.ForEach(oneSimilarFace => {
+                reorgScene.similarFaces[key].ForEach(oneSimilarFace => {
                     ExtendedPrim ep = oneSimilarFace.containingPrim;
-                    int ii = oneSimilarFace.faceIndex;
-                    OMVR.Face oneFace = ep.facetedMesh.Faces[ii];
-                    int indicesForFace = oneFace.Indices.Count;
+                    int ii = oneSimilarFace.num;
+                    int indicesForFace = oneSimilarFace.indices.Count;
                     totalIndicesPerUnique += indicesForFace;
-                    int verticesForFace = oneFace.Vertices.Count;
+                    int verticesForFace = oneSimilarFace.vertexs.Count;
                     totalVerticesPerUnique += verticesForFace;
-                    oneFace.Vertices.ForEach(v => {
+                    oneSimilarFace.vertexs.ForEach(v => {
                         if (!uniqueVertices.Contains(v)) {
                             uniqueVertices.Add(v);
                         }
@@ -475,10 +461,10 @@ namespace org.herbal3d.BasilOS {
 
             foreach (int key in reorgScene.similarFaces.Keys) {
                 // This is the list of faces that use one particular face material
-                List<MeshWithMaterial> similar = reorgScene.similarFaces[key];
+                List<FaceInfo> similar = reorgScene.similarFaces[key];
 
                 // Loop through the faces and find the 'middle one'
-                MeshWithMaterial rootFace = null;
+                FaceInfo rootFace = null;
                 // similar.ForEach(oneSimilarFace => {
                 // });
                 // for the moment, just select the first one.
@@ -486,8 +472,7 @@ namespace org.herbal3d.BasilOS {
                 rootFace = similar[0];
 
                 ExtendedPrim newEp = new ExtendedPrim();    // the new object being created
-                OMVR.FacetedMesh newFacetedMesh= new OMVR.FacetedMesh();  // the new mesh
-                OMVR.Face newFace = new OMVR.Face();  // the new mesh
+                FaceInfo newFace = new FaceInfo(0, newEp);
                 // Based of the root face, create a new mesh that holds all the faces
                 similar.ForEach(oneSimilarFace => {
                     ExtendedPrim ep = oneSimilarFace.containingPrim;
@@ -496,8 +481,13 @@ namespace org.herbal3d.BasilOS {
                         newEp.SOG = ep.SOG;
                         newEp.SOP = ep.SOP;
                         newEp.primitive = ep.primitive;
-                        newEp.facetedMesh = newFacetedMesh;
-                        newFace.TextureFace = ep.primitive.Textures.CreateFace((uint)oneSimilarFace.faceIndex);
+                        newEp.coordSystem = ep.coordSystem;
+                        newEp.translation = ep.translation;
+                        newEp.rotation = ep.rotation;
+                        newEp.scale = ep.scale;
+                        newEp.transform = ep.transform;
+                        newEp.positionIsParentRelative = ep.positionIsParentRelative;
+                        newEp.faces.Add(newFace.num, newFace);
                     }
                     if (ep.SOP.ParentID != 0) {
                         // if the prim for this face is part of a linkset, its position must be rotated from the base
@@ -526,24 +516,26 @@ namespace org.herbal3d.BasilOS {
         }
 
         private void WriteOutImagesForEP(ExtendedPrim ep) {
-            foreach (KeyValuePair<int, Image> kvp in ep.faceImages) {
-                Image texImage = kvp.Value;
-                string texFilename = ep.faceFilenames[kvp.Key];
-                if (!File.Exists(texFilename)) {
-                    try {
-                        using (Bitmap textureBitmap = new Bitmap(texImage.Width, texImage.Height,
-                                    System.Drawing.Imaging.PixelFormat.Format32bppArgb)) {
-                            // convert the raw image into a channeled image
-                            using (Graphics graphics = Graphics.FromImage(textureBitmap)) {
-                                graphics.DrawImage(texImage, 0, 0);
-                                graphics.Flush();
+            foreach (KeyValuePair<int, FaceInfo> kvp in ep.faces) {
+                if (kvp.Value.faceImage != null) {
+                    Image texImage = kvp.Value.faceImage;
+                    string texFilename = kvp.Value.imageFilename;
+                    if (!File.Exists(texFilename)) {
+                        try {
+                            using (Bitmap textureBitmap = new Bitmap(texImage.Width, texImage.Height,
+                                        System.Drawing.Imaging.PixelFormat.Format32bppArgb)) {
+                                // convert the raw image into a channeled image
+                                using (Graphics graphics = Graphics.FromImage(textureBitmap)) {
+                                    graphics.DrawImage(texImage, 0, 0);
+                                    graphics.Flush();
+                                }
+                                // Write out the converted image as PNG
+                                textureBitmap.Save(texFilename, System.Drawing.Imaging.ImageFormat.Png);
                             }
-                            // Write out the converted image as PNG
-                            textureBitmap.Save(texFilename, System.Drawing.Imaging.ImageFormat.Png);
                         }
-                    }
-                    catch (Exception e) {
-                        m_log.ErrorFormat("{0} FAILED PNG FILE CREATION: {0}", e);
+                        catch (Exception e) {
+                            m_log.ErrorFormat("{0} FAILED PNG FILE CREATION: {0}", e);
+                        }
                     }
                 }
             }
@@ -642,7 +634,7 @@ namespace org.herbal3d.BasilOS {
             }
 
             // Convert the extended prim's coordinate system to OpenGL-ness
-            FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Yup));
+            FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Yup | CoordSystem.UVOriginLowerLeft));
             // FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Zup)); // DEBUG DEBUG -- No change
 
             GltfNode newNode = new GltfNode(pGltf, containingScene, id);
@@ -661,16 +653,14 @@ namespace org.herbal3d.BasilOS {
             //     ret.scale /= ep.SOG.RootPart.Scale;
             // }
 
-            int numFace = 0;
-            ep.facetedMesh.Faces.ForEach(face => {
-                string meshID = ep.SOP.UUID.ToString() + "_face" + numFace.ToString();
+            foreach (FaceInfo faceInfo in ep.faces.Values) {
+                string meshID = ep.SOP.UUID.ToString() + "_face" + faceInfo.num.ToString();
                 GltfMesh mesh = new GltfMesh(pGltf, meshID);
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Face. id={1}", LogHeader, meshID);
                 mesh.underlyingPrim = ep;
-                mesh.underlyingMesh = face;
+                mesh.underlyingMesh = faceInfo;
                 newNode.meshes.Add(mesh);
-                numFace++;
-            });
+            };
 
             return newNode;
         }
@@ -682,6 +672,9 @@ namespace org.herbal3d.BasilOS {
         //     right-handed,Z-up coordinates (OpenSimulator) to right-handed,Y-up
         //     (OpenGL).
         public void FixCoordinates(ExtendedPrim ep, CoordSystem newCoords) {
+            // true if need to flip the V in UV (origin from top left to bottom left)
+            bool flipV = false;
+
             if (ep.coordSystem.system != newCoords.system) {
 
                 OMV.Matrix4 coordTransform = OMV.Matrix4.Identity;
@@ -694,11 +687,13 @@ namespace org.herbal3d.BasilOS {
                                     0,  1,  0,  0,
                                     0,  0,  0,  1);
                 }
-                m_log.DebugFormat("{0} coordTransform={1}", LogHeader, coordTransform);
+                if (ep.coordSystem.getUVOrigin != newCoords.getUVOrigin) {
+                    flipV = true;
+                }
 
                 // Fix the location in space
-                OMV.Vector3 transBefore = ep.translation;   // DEBUG DEBUG
-                OMV.Quaternion rotBefore = ep.rotation;   // DEBUG DEBUG
+                // OMV.Vector3 transBefore = ep.translation;   // DEBUG DEBUG
+                // OMV.Quaternion rotBefore = ep.rotation;   // DEBUG DEBUG
                 if (ep.positionIsParentRelative) {
                     ep.translation = FixOneCoordinate(ep.translation, coordTransform);
                 }
@@ -707,16 +702,17 @@ namespace org.herbal3d.BasilOS {
                     // ep.translation = FixOneCoordinate(ep.translation, coordTransform, m_regionDimensions);
                     ep.translation = FixOneCoordinate(ep.translation, coordTransform);
                 }
-                // if (!ep.positionIsParentRelative) {
-                    ep.rotation = FixOneRotation(ep.rotation, coordTransform);
-                // }
-                m_log.DebugFormat("{0} FixCoordinates. tBefore={1}, tAfter={2}, rBefore={3}, rAfter={4}",
-                        LogHeader, transBefore, ep.translation, rotBefore, ep.rotation);
+                ep.rotation = FixOneRotation(ep.rotation, coordTransform);
+                // m_log.DebugFormat("{0} FixCoordinates. tBefore={1}, tAfter={2}, rBefore={3}, rAfter={4}",    // DEBUG DEBUG
+                //         LogHeader, transBefore, ep.translation, rotBefore, ep.rotation);    // DEBUG DEBUG
 
                 // Go through all the vertices and change the coordinate system
                 PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
                     vert.Position = FixOneCoordinate(vert.Position, coordTransform);
                     vert.Normal = FixOneCoordinate(vert.Normal, coordTransform);
+                    if (flipV) {
+                        vert.TexCoord.Y = 1f - vert.TexCoord.Y;
+                    }
                 });
 
                 // The ExtendedPrim is all converted
@@ -743,8 +739,8 @@ namespace org.herbal3d.BasilOS {
             }
             OMV.Vector3 convEulers = OMV.Vector3.TransformNormal(eulers, coordTransform);
             OMV.Quaternion after = OMV.Quaternion.CreateFromEulers(convEulers.X, convEulers.Y, convEulers.Z);
-            m_log.DebugFormat("{0} FixOneRotation. before={1}, eulers={2}, convEulers={3}, after={4}",
-                        LogHeader, rot, eulers, convEulers, after);
+            // m_log.DebugFormat("{0} FixOneRotation. before={1}, eulers={2}, convEulers={3}, after={4}",
+            //             LogHeader, rot, eulers, convEulers, after);
             return after;
         }
 
