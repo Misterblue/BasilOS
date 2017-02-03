@@ -269,6 +269,14 @@ namespace org.herbal3d.BasilOS {
         //   the meshes and create the Primitives, Materials, and Images.
         // Called before calling ToJSON().
         public void BuildPrimitives(MakeAssetURI makeAssetURI) {
+            // 20170201: ThreeJS defaults to GL_CLAMP but GLTF should default to GL_REPEAT/WRAP
+            // Create a sampler for all the textures that forces WRAPing
+            GltfSampler defaultSampler = new GltfSampler(gltfRoot, "simpleTextureRepeat");
+            defaultSampler.values.Add("magFilter", WebGLConstants.LINEAR);
+            defaultSampler.values.Add("minFilter", WebGLConstants.LINEAR_MIPMAP_LINEAR);
+            defaultSampler.values.Add("wrapS", WebGLConstants.REPEAT);
+            defaultSampler.values.Add("wrapT", WebGLConstants.REPEAT);
+
             meshes.ForEach(mesh => {
                 GltfMaterial theMaterial = null;
                 int hash = mesh.underlyingMesh.textureEntry.GetHashCode();
@@ -299,6 +307,7 @@ namespace org.herbal3d.BasilOS {
                             theTexture.type = WebGLConstants.UNSIGNED_BYTE;
                             theTexture.format = WebGLConstants.RGBA;
                             theTexture.internalFormat = WebGLConstants.RGBA;
+                            theTexture.sampler = defaultSampler;
                             GltfImage theImage = null;
                             if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
                                 theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
@@ -576,6 +585,12 @@ namespace org.herbal3d.BasilOS {
                 outt.Write(",\n");
             }
 
+            if (samplers.Count > 0) {
+                outt.Write(GltfClass.Indent(level) + "\"samplers\": ");
+                samplers.ToJSON(outt, level+1);
+                outt.Write(",\n");
+            }
+
             if (programs.Count > 0) {
                 outt.Write(GltfClass.Indent(level) + "\"programs\": ");
                 programs.ToJSON(outt, level+1);
@@ -617,7 +632,7 @@ namespace org.herbal3d.BasilOS {
         // The value Objects are inspected and output properly as JSON strings, arrays, or numbers.
         // Note: to add an array, do: GltfAttribute.Add(key, new Object[] { 1, 2, 3, 4 } );
         public void ToJSON(StreamWriter outt, int level) {
-            outt.Write(" { ");
+            outt.Write(" {\n");
             bool first = true;
             foreach (KeyValuePair<string, Object> kvp in this) {
                 Gltf.WriteJSONValueLine(outt, level, ref first, kvp.Key, kvp.Value);
@@ -1249,11 +1264,11 @@ namespace org.herbal3d.BasilOS {
         public GltfAttributes values;
         public GltfSampler(Gltf pRoot, string pID) : base(pRoot, pID) {
             gltfRoot.samplers.Add(this);
+            values = new GltfAttributes();
         }
 
         public override void ToJSON(StreamWriter outt, int level) {
-            outt.Write("{\n");
-            outt.Write(" }");
+            values.ToJSON(outt, level + 1);
         }
     }
 
