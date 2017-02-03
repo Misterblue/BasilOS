@@ -48,6 +48,7 @@ namespace org.herbal3d.BasilOS {
 
         protected Scene m_scene;
         OMV.Vector3 m_regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
+        OMV.Vector3 m_regionCenter = new OMV.Vector3(Constants.RegionSize/2, Constants.RegionSize/2, 10000f);
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -86,6 +87,8 @@ namespace org.herbal3d.BasilOS {
                 m_scene = scene;
                 m_regionDimensions.X = m_scene.RegionInfo.RegionSizeX;
                 m_regionDimensions.Y = m_scene.RegionInfo.RegionSizeY;
+                m_regionCenter.X = m_regionDimensions.X / 2f;
+                m_regionCenter.Y = m_regionDimensions.Y / 2f;
 
                 m_log.DebugFormat("{0} REGION {1} ADDED", LogHeader, scene.RegionInfo.RegionName);
             }
@@ -550,7 +553,7 @@ namespace org.herbal3d.BasilOS {
 
             // For each of the entities, create a gltfNode for the root and then add the linkset prims as the children
             reorgScene.nonStaticEntities.ForEach(eg => {
-                m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding non-static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
+                // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding non-static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
                 AddNodeToGltf(gltf, gScene, eg);
             });
 
@@ -562,7 +565,7 @@ namespace org.herbal3d.BasilOS {
 
             // DEBUG DEBUG: for testing, just pass through the static elements
             reorgScene.staticEntities.ForEach(eg => {
-                m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
+                // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
                 AddNodeToGltf(gltf, gScene, eg);
             });
 
@@ -678,9 +681,62 @@ namespace org.herbal3d.BasilOS {
             if (ep.coordSystem.system != newCoords.system) {
 
                 OMV.Matrix4 coordTransform = OMV.Matrix4.Identity;
+                OMV.Quaternion coordTransformQ = OMV.Quaternion.Identity;
                 if (ep.coordSystem.getUpDimension == CoordSystem.Zup
                     && newCoords.getUpDimension == CoordSystem.Yup) {
                     // The one thing we know to do is change from Zup to Yup
+                    coordTransformQ = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
+                    // Make a clean matrix version.
+                    // The libraries tend to create matrices with small numbers (1.119093e-07) for zero.
+                    coordTransform = new OMV.Matrix4(
+                                    1,  0,  0,  0,
+                                    0,  0, -1,  0,
+                                    0,  1,  0,  0,
+                                    0,  0,  0,  1);
+                }
+                if (ep.coordSystem.getUVOrigin != newCoords.getUVOrigin) {
+                    flipV = true;
+                }
+
+                // Fix the location in space
+                if (!ep.positionIsParentRelative) {
+                    ep.translation = ep.translation * coordTransformQ;
+                    ep.rotation = coordTransformQ * ep.rotation;
+                }
+
+                // Go through all the vertices and change the UV coords if necessary
+                if (flipV) {
+                    PrimToMesh.OnAllVertex(ep, delegate (ref OMVR.Vertex vert) {
+                        vert.TexCoord.Y = 1f - vert.TexCoord.Y;
+                    });
+                }
+
+                // The ExtendedPrim is all converted
+                ep.coordSystem = newCoords;
+            }
+        }
+
+        // Convert the positions and all the vertices in an ExtendedPrim from one
+        //     coordinate space to another. ExtendedPrim.coordSpace gives the current
+        //     coordinates and we specify a new one here.
+        // This is not a general solution -- it pretty much only works to convert
+        //     right-handed,Z-up coordinates (OpenSimulator) to right-handed,Y-up
+        //     (OpenGL).
+        // DEPRECATED: this is a test version where tweaking happens.
+        public void FixCoordinates2(ExtendedPrim ep, CoordSystem newCoords) {
+            // true if need to flip the V in UV (origin from top left to bottom left)
+            bool flipV = false;
+
+            if (ep.coordSystem.system != newCoords.system) {
+
+                OMV.Matrix4 coordTransform = OMV.Matrix4.Identity;
+                OMV.Quaternion coordTransformQ = OMV.Quaternion.Identity;
+                if (ep.coordSystem.getUpDimension == CoordSystem.Zup
+                    && newCoords.getUpDimension == CoordSystem.Yup) {
+                    // The one thing we know to do is change from Zup to Yup
+                    coordTransformQ = OMV.Quaternion.CreateFromAxisAngle(1.0f, 0.0f, 0.0f, -(float)Math.PI / 2f);
+                    // Make a clean matrix version.
+                    // The libraries tend to create matrices with small numbers (1.119093e-07) for zero.
                     coordTransform = new OMV.Matrix4(
                                     1,  0,  0,  0,
                                     0,  0, -1,  0,
@@ -702,7 +758,7 @@ namespace org.herbal3d.BasilOS {
                     // ep.translation = FixOneCoordinate(ep.translation, coordTransform, m_regionDimensions);
                     ep.translation = FixOneCoordinate(ep.translation, coordTransform);
                 }
-                ep.rotation = FixOneRotation(ep.rotation, coordTransform);
+                ep.rotation = FixOneRotation(ep.rotation, coordTransform, coordTransformQ);
                 // m_log.DebugFormat("{0} FixCoordinates. tBefore={1}, tAfter={2}, rBefore={3}, rAfter={4}",    // DEBUG DEBUG
                 //         LogHeader, transBefore, ep.translation, rotBefore, ep.rotation);    // DEBUG DEBUG
 
@@ -728,7 +784,7 @@ namespace org.herbal3d.BasilOS {
             return newVect;
         }
 
-        public OMV.Quaternion FixOneRotation(OMV.Quaternion rot, OMV.Matrix4 coordTransform) {
+        public OMV.Quaternion FixOneRotation(OMV.Quaternion rot, OMV.Matrix4 coordTransform, OMV.Quaternion coordTransformQ) {
             OMV.Vector3 eulers = new OMV.Vector3();
             rot.GetEulerAngles(out eulers.X, out eulers.Y, out eulers.Z);
             // It looks like GetEulerAngles will return two PIs for a non-changing double axis inversion. Odd.
@@ -739,6 +795,10 @@ namespace org.herbal3d.BasilOS {
             }
             OMV.Vector3 convEulers = OMV.Vector3.TransformNormal(eulers, coordTransform);
             OMV.Quaternion after = OMV.Quaternion.CreateFromEulers(convEulers.X, convEulers.Y, convEulers.Z);
+            /*
+            // OMV.Quaternion after = coordTransformQ * rot;
+            OMV.Quaternion after = rot * coordTransformQ;
+            */
             // m_log.DebugFormat("{0} FixOneRotation. before={1}, eulers={2}, convEulers={3}, after={4}",
             //             LogHeader, rot, eulers, convEulers, after);
             return after;
