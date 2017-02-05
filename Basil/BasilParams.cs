@@ -39,6 +39,10 @@ namespace org.herbal3d.BasilOS {
 
         public string GltfTargetDir;    // where to store all the Gltf files
         public bool ExportTextures;     // also export textures to the target dir
+        public bool AddTerrainMesh;     // whether to create and add a terrain mesh
+        public bool CreateTerrainSplat; // whether to generate a terrain mesh splat texture
+
+        public int VerticesMaxForBuffer;    // Number of vertices to cause splitting of buffer files
 
         public bool DisplayTimeScaling; // 'true' if to delay mesh scaling to display/GPU time
 
@@ -80,6 +84,12 @@ namespace org.herbal3d.BasilOS {
                 "./gltf" ),
             new ParameterDefn<bool>("ExportTextures", "Convert textures to PNGs and export to target dir",
                 true ),
+            new ParameterDefn<bool>("AddTerrainMesh", "whether to create and add a terrain mesh",
+                true ),
+            new ParameterDefn<bool>("CreateTerrainSplat", "whether to generate a terrain mesh splat texture",
+                true ),
+            new ParameterDefn<int>("VerticesMaxForBuffer", "Number of vertices to cause splitting of buffer files",
+                30000 ),
             new ParameterDefn<bool>("DisplayTimeScaling", "If to delay mesh scaling to display/GPU time",
                 false ),
             new ParameterDefn<string>("URIBase", "the string added to be beginning of asset name to create URI",

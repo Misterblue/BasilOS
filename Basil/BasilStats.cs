@@ -42,6 +42,7 @@ namespace org.herbal3d.BasilOS {
 
         public Scene m_scene;
         public ILog m_log;
+        private static string LogHeader = "[Basil.Stats] ";
 
         public BasilStats(Scene pScene, ILog pLog) {
             m_scene = pScene;
@@ -78,17 +79,19 @@ namespace org.herbal3d.BasilOS {
                 }
 
                 // Get the number of unique materials
-                OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
-                int numFaces = ep.facetedMesh.Faces.Count;
-                for (int ii = 0; ii < numFaces; ii++) {
-                    OMV.Primitive.TextureEntryFace tef = tex.FaceTextures[ii];
-                    if (tef == null) {
+                for (int ii = 0; ii < ep.faces.Count; ii++) {
+                    OMV.Primitive.TextureEntryFace tef = ep.faces[ii].textureEntry;
+                    if (ep.facetedMesh.Faces[ii].TextureFace == null) {
                         numNullTexturedFaces++;
-                        tef = tex.DefaultTexture;
                     }
-                    int hashCode = tef.GetHashCode();
-                    if (!faceMaterials.ContainsKey(hashCode)) {
-                        faceMaterials.Add(hashCode, tef);
+                    if (tef != null) {
+                        int hashCode = tef.GetHashCode();
+                        if (!faceMaterials.ContainsKey(hashCode)) {
+                            faceMaterials.Add(hashCode, tef);
+                        }
+                    }
+                    else {
+                        m_log.DebugFormat("{0} tef is null!! id={1}, ii={2}", LogHeader, ep.ID, ii);
                     }
                 }
             });

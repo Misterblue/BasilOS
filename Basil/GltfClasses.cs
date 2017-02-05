@@ -332,14 +332,32 @@ namespace org.herbal3d.BasilOS {
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
         public void BuildBuffers(MakeAssetURI makeAssetURI) {
-            
+            // Partion the meshes into smaller groups based on number of vertices going out
+            List<GltfMesh> partial = new List<GltfMesh>();
+            int totalVertices = 0;
+            meshes.ForEach(mesh => {
+                totalVertices += mesh.underlyingMesh.vertexs.Count;
+                partial.Add(mesh);
+                if (totalVertices > 30000) {
+                    BuildBufferForSomeMeshes(partial, makeAssetURI);
+                    partial.Clear();
+                    totalVertices = 0;
+                }
+            });
+            if (partial.Count > 0) {
+                BuildBufferForSomeMeshes(partial, makeAssetURI);
+            }
+        }
+
+        // For a collection of meshes, create the buffers and accessors.
+        public void BuildBufferForSomeMeshes(List<GltfMesh> someMeshes, MakeAssetURI makeAssetURI) {
             // Pass over all the vertices in all the meshes and collect common vertices into 'vertexCollection'
             int numMeshes = 0;
             int numVerts = 0;
             Dictionary<OMVR.Vertex, ushort> vertexIndex = new Dictionary<OMVR.Vertex, ushort>();
             List<OMVR.Vertex> vertexCollection = new List<OMVR.Vertex>();
             ushort vertInd = 0;
-            meshes.ForEach(mesh => {
+            someMeshes.ForEach(mesh => {
                 numMeshes++;
                 FaceInfo faceInfo = mesh.underlyingMesh;
                 faceInfo.vertexs.ForEach(vert => {
@@ -358,11 +376,11 @@ namespace org.herbal3d.BasilOS {
             // Remap all the indices to the new, compacted vertex collection.
             //     mesh.underlyingMesh.face to mesh.newIndices
             int numIndices = 0;
-            meshes.ForEach(mesh => {
+            someMeshes.ForEach(mesh => {
                 FaceInfo faceInfo = mesh.underlyingMesh;
                 ushort[] newIndices = new ushort[faceInfo.indices.Count];
                 for (int ii = 0; ii < faceInfo.indices.Count; ii++) {
-                    OMVR.Vertex aVert = faceInfo.vertexs[faceInfo.indices[ii]];
+                    OMVR.Vertex aVert = faceInfo.vertexs[(int)faceInfo.indices[ii]];
                     newIndices[ii] = vertexIndex[aVert];
                 }
                 mesh.newIndices = newIndices;
@@ -374,30 +392,33 @@ namespace org.herbal3d.BasilOS {
             //    updated indices in GltfMesh.newIndices.
 
             int sizeofVertices = vertexCollection.Count * sizeof(float) * 8;
-            int sizeofIndices = numIndices * sizeof(ushort);
+            int sizeofOneIndices = sizeof(ushort);
+            int sizeofIndices = numIndices * sizeofOneIndices;
             // The offsets must be multiples of a good access unit so thing align
             int padUnit = sizeof(float) * 8;
             int paddedSizeofIndices = sizeofIndices;
             // There might be padding for each mesh. An over estimate but hopefully not too bad.
-            paddedSizeofIndices += meshes.Count * sizeof(float);
+            paddedSizeofIndices += someMeshes.Count * sizeof(float);
             paddedSizeofIndices += (padUnit - (paddedSizeofIndices % padUnit)) % padUnit;
 
+            // A key added to the buffer, vertices, and indices names to uniquify them
+            string buffNum =  String.Format("{0:000}", buffers.Count + 1);
             byte[] binBuffRaw = new byte[paddedSizeofIndices + sizeofVertices];
             string buffFilename = null;
             string buffURI = null;
-            string buffName = String.Format("buffer{0:000}", buffers.Count + 1);
+            string buffName = "buffer" + buffNum;
             makeAssetURI(Gltf.MakeAssetURITypeBuff, buffName, out buffFilename, out buffURI);
             // m_log.DebugFormat("{0} BuildBuffers: make buffer: name={1}, filename={2}, uri={3}", LogHeader, buffName, buffFilename, buffURI);
             GltfBuffer binBuff = new GltfBuffer(gltfRoot, buffName, "arraybuffer", buffFilename, buffURI);
             binBuff.bufferBytes = binBuffRaw;
 
-            GltfBufferView binIndicesView = new GltfBufferView(gltfRoot, "bufferViewIndices");
+            GltfBufferView binIndicesView = new GltfBufferView(gltfRoot, "bufferViewIndices" + buffNum);
             binIndicesView.buffer = binBuff;
             binIndicesView.byteOffset = 0;
             binIndicesView.byteLength = paddedSizeofIndices;
             binIndicesView.target = WebGLConstants.ELEMENT_ARRAY_BUFFER;
 
-            GltfBufferView binVerticesView = new GltfBufferView(gltfRoot, "bufferViewVertices");
+            GltfBufferView binVerticesView = new GltfBufferView(gltfRoot, "bufferViewVertices" + buffNum);
             binVerticesView.buffer = binBuff;
             binVerticesView.byteOffset = paddedSizeofIndices;
             binVerticesView.byteLength = sizeofVertices;
@@ -426,18 +447,18 @@ namespace org.herbal3d.BasilOS {
             // For each mesh, copy the indices into the binary output buffer and create the accessors
             //    that point from the mesh into the binary info.
             int indicesOffset = binIndicesView.byteOffset;
-            meshes.ForEach(mesh => {
-                int meshIndicesSize = mesh.newIndices.Length * sizeof(ushort);
+            someMeshes.ForEach(mesh => {
+                int meshIndicesSize = mesh.newIndices.Length * sizeofOneIndices;
                 Buffer.BlockCopy(mesh.newIndices, 0, binBuffRaw, indicesOffset, meshIndicesSize);
 
                 GltfAccessor indicesAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accInd");
                 indicesAccessor.bufferView = binIndicesView;
                 indicesAccessor.count = mesh.newIndices.Length;
                 indicesAccessor.byteOffset = indicesOffset;
-                indicesAccessor.byteStride = sizeof(ushort);
+                indicesAccessor.byteStride = sizeofOneIndices;
                 indicesAccessor.componentType = WebGLConstants.UNSIGNED_SHORT;
                 indicesAccessor.type = "SCALAR";
-                int imin = Int32.MaxValue; int imax = 0;
+                ushort imin = UInt16.MaxValue; ushort imax = 0;
                 for (int ii = 0; ii < mesh.newIndices.Length; ii++) {
                     imin = Math.Min(imin, mesh.newIndices[ii]);
                     imax = Math.Max(imax, mesh.newIndices[ii]);

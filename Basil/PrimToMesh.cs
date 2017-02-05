@@ -177,6 +177,23 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
+        public IPromise<ExtendedPrimGroup> MeshFromHeightMap( float[,] pHeightMap, IAssetFetcherWrapper assetFetcher) {
+
+            var prom = new Promise<ExtendedPrimGroup>();
+
+            OMVR.Face rawMesh = m_mesher.TerrainMesh(pHeightMap, 0, pHeightMap.GetLength(0)-1, 0, pHeightMap.GetLength(1)-1);
+            OMVR.FacetedMesh facetMesh = new OMVR.FacetedMesh();
+            facetMesh.Faces = new List<OMVR.Face>();
+            facetMesh.Faces.Add(rawMesh);
+
+            ExtendedPrim ep = new ExtendedPrim(null, null, null, facetMesh);
+            ExtendedPrimGroup epg = new ExtendedPrimGroup(ep);
+            prom.Resolve(epg);
+
+            return prom;
+        }
+
+
         public void Dispose() {
             m_mesher = null;
         }

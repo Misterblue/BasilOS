@@ -27,6 +27,7 @@ using Nini.Config;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Region.PhysicsModules.SharedBase;
 
 using RSG;
 
@@ -231,13 +232,22 @@ namespace org.herbal3d.BasilOS {
                         }
                     ); 
                 });
+
+                if (m_params.AddTerrainMesh) {
+                    CreateTerrainMesh(m_scene, assetMesher, assetFetcher, stats)
+                        .Catch(e => {
+                        })
+                        .Then(ePrimGroup => {
+                            allSOGs.Add(ePrimGroup);
+                        }
+                    );
+                }
             }
         }
 
         // Convert all prims in SOG into meshes and return the mesh group.
         private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
                         IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
-            // m_log.DebugFormat("{0}: ConvertSOG", LogHeader);
             var prom = new Promise<EntityGroup>();
 
             EntityGroup meshes = new EntityGroup(sog);
@@ -245,23 +255,14 @@ namespace org.herbal3d.BasilOS {
             int totalChildren = sog.Parts.GetLength(0);
             foreach (SceneObjectPart sop in sog.Parts) {
 
-                // DEBUG DEBUG
-                /*
+                /* DEBUG DEBUG
                 m_log.DebugFormat("{0} SOP {1} wPos={2}, gPos={3}, aPos={4}, oPos={5}, rOff={6}, wRot={7}, scale={8}",
                         LogHeader, sop.UUID,
                         sop.GetWorldPosition(),
                         sop.GroupPosition, sop.AbsolutePosition, sop.OffsetPosition,
                         sop.RotationOffset, sop.GetWorldRotation(), sop.Scale);
-                */
-                /*
-                OMV.Vector3 rots = new OMV.Vector3();
-                float radtodeg = 57.2958f;
-                sop.GetWorldRotation().GetEulerAngles(out rots.X, out rots.Y, out rots.Z);
-                m_log.DebugFormat("{0} SOP {1} wPos={2}, rot={3}, scale={4}",
-                        LogHeader, sop.UUID,
-                        sop.GetWorldPosition(), rots * radtodeg, sop.Scale);
-                */
-                // END DEBUG DEBUG
+                END DEBUG DEBUG */
+
                 OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
                 mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
                     .Catch(e => {
@@ -286,12 +287,40 @@ namespace org.herbal3d.BasilOS {
                         }
                         // can't tell what order the prims are completed in so wait until they are all meshed
                         // TODO: change the completion logic to use Promise.All()
-                        // m_log.DebugFormat("{0}: ConvertSOG: id={1}, totalChildren={2}", LogHeader, sog.UUID, totalChildren);
                         if (--totalChildren <= 0) {
                             prom.Resolve(meshes);
                         }
                     });
             }
+            return prom;
+        }
+
+        private IPromise<EntityGroup> CreateTerrainMesh(Scene pScene, PrimToMesh assetMesher,
+                            IAssetFetcherWrapper assetFetcher, BasilStats stats) {
+            var prom = new Promise<EntityGroup>();
+
+            int XSize = pScene.Heightmap.Width;
+            int YSize = pScene.Heightmap.Height;
+
+            float[,] heightMap = new float[XSize, YSize];
+            for (int xx = 0; xx < XSize; xx++) {
+                for (int yy = 0; yy < YSize; yy++) {
+                    heightMap[xx, yy] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+                }
+            }
+
+            assetMesher.MeshFromHeightMap(heightMap, assetFetcher)
+                .Done(epg => {
+                    // we have the mesh. Now figure out the texture.
+                    FaceInfo faceInfo = epg.primaryExtendePrim.faces[0];
+                    faceInfo.textureEntry = new OMV.Primitive.TextureEntryFace(null);
+                    faceInfo.textureEntry.TextureID = OMV.UUID.Random();
+
+                    EntityGroup eg = new EntityGroup(null);
+                    eg.Add(epg);
+                    prom.Resolve(eg);
+                });
+            
             return prom;
         }
 
@@ -398,9 +427,12 @@ namespace org.herbal3d.BasilOS {
             // Go through all the static items and make a list of all the meshes with similar textures
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
             reorgScene.staticEntities.ForEachExtendedPrim(ep => {
-                OMV.Primitive.TextureEntry tex = ep.SOP.Shape.Textures;
                 foreach (FaceInfo faceInfo in ep.faces.Values) {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
+                    if (tef == null) {
+                        tef = new OMV.Primitive.TextureEntryFace(null);
+                        tef.TextureID = OMV.Primitive.TextureEntry.WHITE_TEXTURE;
+                    }
                     int hashCode = tef.GetHashCode();
                     reorgScene.similarFaces.AddSimilarFace(hashCode, faceInfo);
                 }
@@ -412,9 +444,11 @@ namespace org.herbal3d.BasilOS {
         // Return 'true' if a 'static' shape.
         private bool IsStaticShape(ExtendedPrim ep) {
             bool ret = true;
-            if (0 != (uint)ep.SOP.ScriptEvents) {
-                // if there are any script events, this cannot be a static object
-                ret = false;
+            if (ep.SOP != null) {
+                if ((ep.SOP.PhysActor != null && ep.SOP.PhysActor.IsPhysical) || (0 != (uint)ep.SOP.ScriptEvents)) {
+                    // if there are any script events, this cannot be a static object
+                    ret = false;
+                }
             }
             return ret;
         }
@@ -492,7 +526,7 @@ namespace org.herbal3d.BasilOS {
                         newEp.positionIsParentRelative = ep.positionIsParentRelative;
                         newEp.faces.Add(newFace.num, newFace);
                     }
-                    if (ep.SOP.ParentID != 0) {
+                    if (!ep.isRoot) {
                         // if the prim for this face is part of a linkset, its position must be rotated from the base
                         // TODO:
                     }
@@ -610,7 +644,7 @@ namespace org.herbal3d.BasilOS {
             ExtendedPrim rootPrim = null;
             eg.ForEach(epg => {
                 ExtendedPrim ep = epg.primaryExtendePrim;
-                if (ep.SOP.IsRoot) {
+                if (ep.isRoot) {
                     rootPrim = ep;
                 }
             });
@@ -619,7 +653,7 @@ namespace org.herbal3d.BasilOS {
             // Add any children of the root node
             eg.ForEach(epg => {
                 ExtendedPrim ep = epg.primaryExtendePrim;
-                if (!ep.SOP.IsRoot) {
+                if (!ep.isRoot) {
                     GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, null, ep);
                     gRootNode.children.Add(gChildNode);
                 }
@@ -628,8 +662,11 @@ namespace org.herbal3d.BasilOS {
 
         // Copy all the Entity information into gltf Nodes and Meshes
         private GltfNode GltfNodeFromExtendedPrim(Gltf pGltf, GltfScene containingScene, ExtendedPrim ep) {
-            string id = ep.SOP.UUID.ToString();
-            if (ep.SOP.IsRoot) {
+            string id = ep.ID.ToString();
+            if (ep.SOP == null) {
+                id += "_terrain";
+            }
+            else if (ep.isRoot) {
                 id += "_root";
             }
             else {
@@ -642,7 +679,7 @@ namespace org.herbal3d.BasilOS {
 
             GltfNode newNode = new GltfNode(pGltf, containingScene, id);
 
-            newNode.name = ep.SOP.Name;
+            newNode.name = ep.Name;
 
             newNode.translation = ep.translation;
             newNode.rotation = ep.rotation;
@@ -650,14 +687,9 @@ namespace org.herbal3d.BasilOS {
             if (ep.transform != null) {
                 newNode.matrix = (OMV.Matrix4)ep.transform;
             }
-            // The following is needed if the child is it's own mesh separate from the parent
-            // if (!ep.SOP.IsRoot) {
-            //     // If this is a child, divide out the scale of the parent
-            //     ret.scale /= ep.SOG.RootPart.Scale;
-            // }
 
             foreach (FaceInfo faceInfo in ep.faces.Values) {
-                string meshID = ep.SOP.UUID.ToString() + "_face" + faceInfo.num.ToString();
+                string meshID = ep.ID.ToString() + "_face" + faceInfo.num.ToString();
                 GltfMesh mesh = new GltfMesh(pGltf, meshID);
                 // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Face. id={1}", LogHeader, meshID);
                 mesh.underlyingPrim = ep;

@@ -90,6 +90,8 @@ namespace org.herbal3d.BasilOS {
         public SceneObjectPart SOP { get; set; }
         public OMV.Primitive primitive { get; set; }
         public OMVR.FacetedMesh facetedMesh { get; set; }
+        public OMV.UUID ID;
+        public string Name;
 
         public CoordSystem coordSystem; // coordinate system of this prim
         public OMV.Vector3 translation;
@@ -100,6 +102,17 @@ namespace org.herbal3d.BasilOS {
 
         // The data is taken out of the structures above and copied here for mangling
         public Dictionary<int, FaceInfo> faces;
+
+        // This logic is here mostly because there are some entities that are not scene objects.
+        // Terrain, in particular.
+        public bool isRoot {
+            get {
+                bool ret = true;
+                if (SOP != null && !SOP.IsRoot)
+                    ret = false;
+                return ret;
+            }
+        }
 
         // A very empty ExtendedPrim. You must initialize everything by hand after creating this.
         public ExtendedPrim() {
@@ -115,6 +128,21 @@ namespace org.herbal3d.BasilOS {
             SOP = pSOP;
             primitive = pPrim;
             facetedMesh = pFMesh;
+            translation = new OMV.Vector3(0, 0, 0);
+            rotation = OMV.Quaternion.Identity;
+            scale = OMV.Vector3.One;
+            transform = null;       // matrix overrides the translation/rotation
+            coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
+
+            if (SOP != null) {
+                ID = SOP.UUID;
+                Name = SOP.Name;
+            }
+            else {
+                ID = OMV.UUID.Random();
+                Name = "Custom";
+            }
+
             if (SOP != null) {
                 if (SOP.IsRoot) {
                     translation = SOP.GetWorldPosition();
@@ -126,10 +154,8 @@ namespace org.herbal3d.BasilOS {
                     rotation = SOP.RotationOffset;
                     positionIsParentRelative = true;
                 }
+                scale = SOP.Scale;
             }
-            scale = SOP.Scale;
-            transform = null;
-            coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
 
             // Copy the vertex information into our face information array.
             // Only the vertex and indices information is put into the face info.
@@ -140,6 +166,7 @@ namespace org.herbal3d.BasilOS {
                 FaceInfo faceInfo = new FaceInfo(ii, this);
                 faceInfo.vertexs = aFace.Vertices.ToList();
                 faceInfo.indices = aFace.Indices.ToList();
+
                 faces.Add(ii, faceInfo);
             }
         }
