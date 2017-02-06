@@ -332,7 +332,7 @@ namespace org.herbal3d.BasilOS {
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
         public void BuildBuffers(MakeAssetURI makeAssetURI) {
-            // Partion the meshes into smaller groups based on number of vertices going out
+            // Partition the meshes into smaller groups based on number of vertices going out
             List<GltfMesh> partial = new List<GltfMesh>();
             int totalVertices = 0;
             meshes.ForEach(mesh => {

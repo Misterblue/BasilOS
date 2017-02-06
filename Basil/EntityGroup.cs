@@ -64,16 +64,20 @@ namespace org.herbal3d.BasilOS {
         public OMV.Primitive.TextureEntryFace textureEntry;
         public OMV.UUID? textureID;     // UUID of the texture if there is one
         public Image faceImage;
-        public bool hasAlpha;          // true if there is some transparancy in the surface
-        public bool fullAlpha;         // true if the alpha is everywhere
+        public bool hasAlpha;           // true if there is some transparancy in the surface
+        public bool fullAlpha;          // true if the alpha is everywhere
         public string imageFilename;    // filename built for this face material
-        public string imageURI;    // filename built for this face material
+        public string imageURI;         // URI built for this face material
+
+        private static OMV.Primitive.TextureEntryFace DefaultWhite =
+                        new OMV.Primitive.TextureEntryFace(null) { TextureID = OMV.Primitive.TextureEntry.WHITE_TEXTURE };
 
         public FaceInfo(int pNum, ExtendedPrim pContainingPrim) {
             num = pNum;
             containingPrim = pContainingPrim;
             vertexs = new List<OMVR.Vertex>();
             indices = new List<ushort>();
+            // textureEntry = DefaultWhite;
             hasAlpha = false;
             fullAlpha = false;
             faceImage = null;       // flag saying if an image is present
@@ -131,7 +135,7 @@ namespace org.herbal3d.BasilOS {
             translation = new OMV.Vector3(0, 0, 0);
             rotation = OMV.Quaternion.Identity;
             scale = OMV.Vector3.One;
-            transform = null;       // matrix overrides the translation/rotation
+            transform = null;       // matrix overrides the translation/rotation. Start with no matrix.
             coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
 
             if (SOP != null) {
@@ -214,15 +218,17 @@ namespace org.herbal3d.BasilOS {
 
     // some entities are made of multiple prims (linksets)
     public class EntityGroup : List<ExtendedPrimGroup> {
-        public SceneObjectGroup SOG { get; protected set;  }
-        public EntityGroup(SceneObjectGroup pSOG) : base() {
-            SOG = pSOG;
+        public EntityGroup() : base() {
+        }
+        public EntityGroup(List<ExtendedPrimGroup> list) : base(list) {
         }
     }
 
     // list of entities ... can safely add and entity multiple times
     public class EntityGroupList : List<EntityGroup> {
         public EntityGroupList() : base() {
+        }
+        public EntityGroupList(List<EntityGroup> list) : base(list) {
         }
 
         // Add the entity group to the list if it is not alreayd in the list

@@ -59,22 +59,22 @@ namespace org.herbal3d.BasilOS {
                         // m_log.DebugFormat("{0}: CreateMeshResource: creating mesh", LogHeader);
                         stats.numMeshes++;
                         MeshFromPrimMeshData(sog, sop, prim, assetFetcher, lod)
-                            .Then(ePrimGroup => {
-                                prom.Resolve(ePrimGroup);
-                            })
                             .Catch(e => {
                                 prom.Reject(e);
+                            })
+                            .Done(ePrimGroup => {
+                                prom.Resolve(ePrimGroup);
                             });
                     }
                     else {
                         // m_log.DebugFormat("{0}: CreateMeshResource: creating sculpty", LogHeader);
                         stats.numSculpties++;
                         MeshFromPrimSculptData(sog, sop, prim, assetFetcher, lod)
-                            .Then(fm => {
-                                prom.Resolve(fm);
-                            })
                             .Catch(e => {
                                 prom.Reject(e);
+                            })
+                            .Done(fm => {
+                                prom.Resolve(fm);
                             });
                     }
                 }
@@ -99,9 +99,6 @@ namespace org.herbal3d.BasilOS {
             mesh = m_mesher.GenerateFacetedMesh(prim, lod);
 
             ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, mesh);
-
-            // m_log.DebugFormat("{0} MeshFromPrimShapeData. faces={1}", LogHeader, mesh.Faces.Count);
-
             ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
 
             return extPrimGroup;
@@ -119,15 +116,6 @@ namespace org.herbal3d.BasilOS {
                     OMVR.FacetedMesh fMesh = m_mesher.GenerateFacetedSculptMesh(prim, bm.Image.ExportBitmap(), lod);
 
                     ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, fMesh);
-
-                    // if (fMesh.Faces.Count == 1) {
-                    //     m_log.DebugFormat("{0} MeshFromSculptData. verts={1}, ind={2}", LogHeader,
-                    //             fMesh.Faces[0].Vertices.Count, fMesh.Faces[0].Indices.Count);
-                    // }
-                    // else {
-                    //     m_log.DebugFormat("{0} MeshFromSculptData. faces={1}", LogHeader, fMesh.Faces.Count);
-                    // }
-
                     ExtendedPrimGroup extPrimGroup = new ExtendedPrimGroup(extPrim);
 
                     prom.Resolve(extPrimGroup);
@@ -154,9 +142,6 @@ namespace org.herbal3d.BasilOS {
                         OMVR.FacetedMesh fMesh;
                         if (OMVR.FacetedMesh.TryDecodeFromAsset(prim, meshAsset, lod, out fMesh)) {
                             ExtendedPrim extPrim = new ExtendedPrim(sog, sop, prim, fMesh);
-                            // m_log.DebugFormat("{0} MeshFromPrimMeshData: created mesh.. Faces={1}", 
-                            //                     LogHeader, extPrim.facetedMesh.Faces.Count);
-
                             ExtendedPrimGroup eGroup = new ExtendedPrimGroup(extPrim);
                             prom.Resolve(eGroup);
                         }
@@ -183,8 +168,7 @@ namespace org.herbal3d.BasilOS {
 
             OMVR.Face rawMesh = m_mesher.TerrainMesh(pHeightMap, 0, pHeightMap.GetLength(0)-1, 0, pHeightMap.GetLength(1)-1);
             OMVR.FacetedMesh facetMesh = new OMVR.FacetedMesh();
-            facetMesh.Faces = new List<OMVR.Face>();
-            facetMesh.Faces.Add(rawMesh);
+            facetMesh.Faces = new List<OMVR.Face>() { rawMesh };
 
             ExtendedPrim ep = new ExtendedPrim(null, null, null, facetMesh);
             ExtendedPrimGroup epg = new ExtendedPrimGroup(ep);

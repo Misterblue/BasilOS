@@ -171,130 +171,132 @@ namespace org.herbal3d.BasilOS {
 
                         using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
 
-                            EntityGroupList allSOGs = new EntityGroupList();
-                            ConvertEntitiesToMeshes(allSOGs, assetFetcher, stats);
-                            // Everything has been converted into meshes and available in 'allSOGs'.
-                            m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
+                            //EntityGroupList allSOGs = new EntityGroupList();
+                            ConvertEntitiesToMeshes(assetFetcher, stats)
+                                .Done(allSOGs => {
+                                    // Everything has been converted into meshes and available in 'allSOGs'.
+                                    m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
 
-                            // Scan the entities and reorganize into static/non-static and find shared face meshes
-                            ReorganizeScene(allSOGs, reorgScene);
+                                    // Scan the entities and reorganize into static/non-static and find shared face meshes
+                                    ReorganizeScene(allSOGs, reorgScene);
 
-                            // Scan all the entities and extract statistics
-                            if (m_params.LogConversionStats) {
-                                stats.ExtractStatistics(reorgScene, stats);
-                                stats.LogAll(LogHeader);
-                            }
+                                    // Scan all the entities and extract statistics
+                                    if (m_params.LogConversionStats) {
+                                        stats.ExtractStatistics(reorgScene, stats);
+                                        stats.LogAll(LogHeader);
+                                    }
 
-                            // print out information about the similar faces
-                            if (m_params.LogDetailedSharedFaceStats) {
-                                LogSharedFaceInformation(reorgScene);
-                            }
+                                    // print out information about the similar faces
+                                    if (m_params.LogDetailedSharedFaceStats) {
+                                        LogSharedFaceInformation(reorgScene);
+                                    }
 
-                            // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
-                            //     by repositioning the vertices in the shared meshes so they act as one mesh
-                            ConvertSharedFacesIntoMeshes(reorgScene);
+                                    // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
+                                    //     by repositioning the vertices in the shared meshes so they act as one mesh
+                                    ConvertSharedFacesIntoMeshes(reorgScene);
 
-                            // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
+                                    // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
 
-                            // Build the GLTF structures from the reorganized scene
-                            Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
+                                    // Build the GLTF structures from the reorganized scene
+                                    Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
 
-                            // Scan through all the textures and convert them into PNGs for the Gltf scene
-                            if (m_params.ExportTextures) {
-                                m_log.DebugFormat("{0} exporting textures", LogHeader);
-                                WriteOutImages(reorgScene);
-                            }
+                                    // Scan through all the textures and convert them into PNGs for the Gltf scene
+                                    if (m_params.ExportTextures) {
+                                        m_log.DebugFormat("{0} exporting textures", LogHeader);
+                                        WriteOutImages(reorgScene);
+                                    }
 
-                            // Write out the Gltf information
-                            ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
-
-                            allSOGs.Clear();
+                                    // Write out the Gltf information
+                                    ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
+                                })
+                            ;
                         }
                     }
-
                 }
             }
         }
 
         // For each of the SceneObjectGroups in the scene, create an EntityGroup with everything converted to meshes
-        private void ConvertEntitiesToMeshes(EntityGroupList allSOGs, IAssetFetcherWrapper assetFetcher, BasilStats stats) {
-            // m_log.DebugFormat("{0} ConvertEntitiesToMeshes:", LogHeader);
+        // Also add the terrain if needed.
+        private IPromise<EntityGroupList> ConvertEntitiesToMeshes(IAssetFetcherWrapper assetFetcher, BasilStats stats) {
+            Promise<EntityGroupList> prom = new Promise<EntityGroupList>();
+
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
-                // TODO: This should be a Promise.All()
-                m_scene.ForEachSOG(sog => {
-                    ConvertSOG(sog, assetMesher, assetFetcher, stats)
-                        .Catch(e => {
-                            m_log.ErrorFormat("{0} Error converting SOG. UUID={1}: {2}", LogHeader, sog.UUID, e);
-                        })
-                        .Then(ePrimGroup => {
-                            allSOGs.Add(ePrimGroup);
-                        }
-                    ); 
+                Promise<EntityGroup>.All(
+                    m_scene.GetSceneObjectGroups().Select(sog => {
+                        return ConvertSOG(sog, assetMesher, assetFetcher, stats);
+                    })
+                )
+                .Catch(e => {
+                    m_log.ErrorFormat("{0} Error converting SOG. {1}", LogHeader, e);
+                    prom.Reject(new Exception("Failed to convert SOG: " + e.ToString()));
+                })
+                .Done(eg => {
+                    EntityGroupList egl = new EntityGroupList(eg.ToList());
+                    // If terrain is requested, add it to the list of scene entities
+                    if (m_params.AddTerrainMesh) {
+                        CreateTerrainMesh(m_scene, assetMesher, assetFetcher, stats)
+                            .Catch(e => {
+                                m_log.ErrorFormat("{0} Error creating terrain: {1}", LogHeader, e);
+                                prom.Reject(new Exception("Failed to create terrain: " + e.ToString()));
+                            })
+                            .Done(ePrimGroup => {
+                                egl.Add(ePrimGroup);
+                                prom.Resolve(egl);
+                            }
+                        );
+                    }
+                    else {
+                        prom.Resolve(egl);
+                    }
                 });
-
-                if (m_params.AddTerrainMesh) {
-                    CreateTerrainMesh(m_scene, assetMesher, assetFetcher, stats)
-                        .Catch(e => {
-                        })
-                        .Then(ePrimGroup => {
-                            allSOGs.Add(ePrimGroup);
-                        }
-                    );
-                }
             }
+
+            return prom;
         }
 
         // Convert all prims in SOG into meshes and return the mesh group.
         private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
-                        IAssetFetcherWrapper assetFetcher, BasilStats stats ) {
+                        IAssetFetcherWrapper assetFetcher, BasilStats stats) {
             var prom = new Promise<EntityGroup>();
 
-            EntityGroup meshes = new EntityGroup(sog);
-
-            int totalChildren = sog.Parts.GetLength(0);
-            foreach (SceneObjectPart sop in sog.Parts) {
-
-                /* DEBUG DEBUG
-                m_log.DebugFormat("{0} SOP {1} wPos={2}, gPos={3}, aPos={4}, oPos={5}, rOff={6}, wRot={7}, scale={8}",
-                        LogHeader, sop.UUID,
-                        sop.GetWorldPosition(),
-                        sop.GroupPosition, sop.AbsolutePosition, sop.OffsetPosition,
-                        sop.RotationOffset, sop.GetWorldRotation(), sop.Scale);
-                END DEBUG DEBUG */
-
-                OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
-                mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats)
-                    .Catch(e => {
-                        m_log.ErrorFormat("{0}: ConvertSOG: failed conversion: {1}", LogHeader, e);
-                        prom.Reject(e);
-                    })
-                    .Then(ePrimGroup => {
-                        // If scaling is done in the mesh, do it now
-                        if (!m_params.DisplayTimeScaling) {
-                            PrimToMesh.ScaleMeshes(ePrimGroup);
-                            foreach (ExtendedPrim ep in ePrimGroup.Values) {
-                                ep.scale = new OMV.Vector3(1, 1, 1);
-                            }
+            // Create meshes for all the parts of the SOG
+            Promise<ExtendedPrimGroup>.All(
+                sog.Parts.Select(sop => {
+                    OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
+                    return mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats);
+                } )
+            )
+            // Tweak the parts individually (scale, texturize, ...)
+            .Then(epgs => {
+                return epgs.Select(epg => {
+                    // If scaling is done in the mesh, do it now
+                    if (!m_params.DisplayTimeScaling) {
+                        PrimToMesh.ScaleMeshes(epg);
+                        foreach (ExtendedPrim ep in epg.Values) {
+                            ep.scale = new OMV.Vector3(1, 1, 1);
                         }
+                    }
 
-                        // The prims in the group need to be decorated with texture/image information
-                        UpdateTextureInfo(ePrimGroup, aPrim, assetFetcher, mesher);
+                    // The prims in the group need to be decorated with texture/image information
+                    UpdateTextureInfo(epg, epg.primaryExtendePrim.primitive, assetFetcher, mesher);
 
-                        lock (meshes) {
-                            // m_log.DebugFormat("{0}: CreateAllMeshesInSOP: foreach oneSOP: {1}", LogHeader, sop.UUID);
-                            meshes.Add(ePrimGroup);
-                        }
-                        // can't tell what order the prims are completed in so wait until they are all meshed
-                        // TODO: change the completion logic to use Promise.All()
-                        if (--totalChildren <= 0) {
-                            prom.Resolve(meshes);
-                        }
-                    });
-            }
+                    return epg;
+                });
+            })
+            .Catch(e => {
+                m_log.ErrorFormat("{0} Failed meshing of SOG. ID={1}: {2}", LogHeader, sog.UUID, e);
+                prom.Reject(new Exception(String.Format("failed meshing of SOG. ID={0}: {1}", sog.UUID, e)));
+            })
+            .Done (epgs => {
+                prom.Resolve(new EntityGroup(epgs.ToList()));
+            }) ;
+
             return prom;
         }
 
+        // Create a mesh for the terrain of the current scene
         private IPromise<EntityGroup> CreateTerrainMesh(Scene pScene, PrimToMesh assetMesher,
                             IAssetFetcherWrapper assetFetcher, BasilStats stats) {
             var prom = new Promise<EntityGroup>();
@@ -305,7 +307,8 @@ namespace org.herbal3d.BasilOS {
             float[,] heightMap = new float[XSize, YSize];
             for (int xx = 0; xx < XSize; xx++) {
                 for (int yy = 0; yy < YSize; yy++) {
-                    heightMap[xx, yy] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+                    // This swap of dimensions seems odd but it is the way LL did it originally
+                    heightMap[yy, xx] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
                 }
             }
 
@@ -316,7 +319,7 @@ namespace org.herbal3d.BasilOS {
                     faceInfo.textureEntry = new OMV.Primitive.TextureEntryFace(null);
                     faceInfo.textureEntry.TextureID = OMV.UUID.Random();
 
-                    EntityGroup eg = new EntityGroup(null);
+                    EntityGroup eg = new EntityGroup();
                     eg.Add(epg);
                     prom.Resolve(eg);
                 });
@@ -334,7 +337,6 @@ namespace org.herbal3d.BasilOS {
         /// <param name="pMesher"></param>
         private void UpdateTextureInfo(ExtendedPrimGroup epGroup, OMV.Primitive pPrim,
                                     IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
-            // m_log.DebugFormat("{0}: UpdateTextureInfo", LogHeader);
             ExtendedPrim ep = epGroup.primaryExtendePrim;
             for (int ii = 0; ii < ep.facetedMesh.Faces.Count; ii++) {
                 OMVR.Face face = ep.facetedMesh.Faces[ii];
@@ -342,11 +344,20 @@ namespace org.herbal3d.BasilOS {
                 OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
                 if (tef == null) {
                     tef = pPrim.Textures.DefaultTexture;
+                    if (tef == null) {
+                        m_log.ErrorFormat("{0} UpdateTextureInfo. no default texture. ID={1}", LogHeader, pPrim.ID);
+                        tef = new OMV.Primitive.TextureEntryFace(null);
+                        tef.TextureID = OMV.Primitive.TextureEntry.WHITE_TEXTURE;
+                    }
                 }
                 // Add the texture information for the face for later reference
                 faceInfo.textureEntry = tef;
-                if (tef.RGBA.A != 255f)
+                if (tef.RGBA.A != 1f) {
                     faceInfo.fullAlpha = true;
+                }
+
+                // While we're in the neighborhood, map the texture coords based on the prim information
+                pMesher.UpdateCoords(faceInfo, ep.primitive, face);
 
                 // If the texture includes an image, read it in.
                 OMV.UUID texID = tef.TextureID;
@@ -356,15 +367,13 @@ namespace org.herbal3d.BasilOS {
                     GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
                         .Then(theImage => {
                             faceInfo.faceImage = theImage;
+                            Image aImage;
                             // TODO: examine the image for alphaness
                         })
                         .Catch(e => {
                             m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
                         });
                 }
-
-                // While we're in the neighborhood, map the texture coords based on the prim information
-                pMesher.UpdateCoords(faceInfo, ep.primitive, face);
             }
         }
 
@@ -375,7 +384,6 @@ namespace org.herbal3d.BasilOS {
             Promise<Image> prom = new Promise<Image>();
             int hash = textureHandle.GetHashCode();
             if (textureCache.ContainsKey(hash)) {
-                // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, returning known", LogHeader, textureHandle, hash);
                 prom.Resolve(textureCache[hash]);
             }
             else {
@@ -506,7 +514,7 @@ namespace org.herbal3d.BasilOS {
                 // });
                 // for the moment, just select the first one.
                 // If coordinate jitter becomes a problem, fix this code to find the middle one.
-                rootFace = similar[0];
+                rootFace = similar.First();
 
                 ExtendedPrim newEp = new ExtendedPrim();    // the new object being created
                 FaceInfo newFace = new FaceInfo(0, newEp);
@@ -535,7 +543,7 @@ namespace org.herbal3d.BasilOS {
                         // TODO:
                     }
                 });
-                EntityGroup eg = new EntityGroup(newEp.SOG);
+                EntityGroup eg = new EntityGroup();
                 eg.Add(new ExtendedPrimGroup(newEp));
                 reorgScene.rebuiltFaceEntities.AddUniqueEntity(eg);
             }
