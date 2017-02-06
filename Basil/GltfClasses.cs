@@ -317,7 +317,11 @@ namespace org.herbal3d.BasilOS {
                             theTexture.source = theImage;
                         }
                         ext.values.Remove(GltfExtension.valTransparent);
-                        ext.values.Add(GltfExtension.valTransparent, "true");
+                        if (mesh.underlyingMesh.hasAlpha) 
+                            ext.values.Add(GltfExtension.valTransparent, "true");
+                        else
+                            ext.values.Add(GltfExtension.valTransparent, "false");
+
                         ext.values.Remove(GltfExtension.valDiffuse);
                         ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
                     }

@@ -43,6 +43,7 @@ namespace org.herbal3d.BasilOS {
         public bool CreateTerrainSplat; // whether to generate a terrain mesh splat texture
 
         public int VerticesMaxForBuffer;    // Number of vertices to cause splitting of buffer files
+        public bool HalfRezTerrain;     // whether to reduce the terrain resolution by 2
 
         public bool DisplayTimeScaling; // 'true' if to delay mesh scaling to display/GPU time
 
@@ -90,6 +91,8 @@ namespace org.herbal3d.BasilOS {
                 true ),
             new ParameterDefn<int>("VerticesMaxForBuffer", "Number of vertices to cause splitting of buffer files",
                 30000 ),
+            new ParameterDefn<bool>("HalfRezTerrain", "Whether to reduce the terrain resolution by 2",
+                false ),
             new ParameterDefn<bool>("DisplayTimeScaling", "If to delay mesh scaling to display/GPU time",
                 false ),
             new ParameterDefn<string>("URIBase", "the string added to be beginning of asset name to create URI",

@@ -305,14 +305,31 @@ namespace org.herbal3d.BasilOS {
             int YSize = pScene.Heightmap.Height;
 
             float[,] heightMap = new float[XSize, YSize];
-            for (int xx = 0; xx < XSize; xx++) {
-                for (int yy = 0; yy < YSize; yy++) {
-                    // This swap of dimensions seems odd but it is the way LL did it originally
-                    heightMap[yy, xx] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+            if (m_params.HalfRezTerrain) {
+                heightMap = new float[XSize/2, YSize/2];
+                for (int xx = 1; xx < XSize; xx += 2) {
+                    for (int yy = 1; yy < YSize; yy += 2) {
+                        // This swap of dimensions seems odd but it is the way LL did it originally
+                        float here = pScene.Heightmap.GetHeightAtXYZ(xx+0, yy+0, 26);
+                        float ll = pScene.Heightmap.GetHeightAtXYZ(xx-1, yy-1, 26);
+                        float lr = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy-1, 26);
+                        float ul = pScene.Heightmap.GetHeightAtXYZ(xx-1, yy+1, 26);
+                        float ur = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy+1, 26);
+                        heightMap[(yy - 1) / 2, (xx - 1) / 2] = (here + ll + lr + ul + ur) / 5;
+                    }
+                }
+            }
+            else {
+                heightMap = new float[XSize, YSize];
+                for (int xx = 0; xx < XSize; xx++) {
+                    for (int yy = 0; yy < YSize; yy++) {
+                        // This swap of dimensions seems odd but it is the way LL did it originally
+                        heightMap[yy, xx] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+                    }
                 }
             }
 
-            assetMesher.MeshFromHeightMap(heightMap, assetFetcher)
+            assetMesher.MeshFromHeightMap(heightMap, (int)m_scene.RegionInfo.RegionSizeX, (int)m_scene.RegionInfo.RegionSizeY, assetFetcher)
                 .Done(epg => {
                     // we have the mesh. Now figure out the texture.
                     FaceInfo faceInfo = epg.primaryExtendePrim.faces[0];
@@ -367,8 +384,26 @@ namespace org.herbal3d.BasilOS {
                     GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
                         .Then(theImage => {
                             faceInfo.faceImage = theImage;
-                            Image aImage;
-                            // TODO: examine the image for alphaness
+                            faceInfo.hasAlpha = false;
+                            if (Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
+                                // The image could have alpha values in it
+                                Bitmap bitmapImage = theImage as Bitmap;
+                                if (bitmapImage != null) {
+                                    for (int xx = 0; xx < bitmapImage.Width; xx++) {
+                                        for (int yy = 0; yy < bitmapImage.Height; yy++) {
+                                            if (bitmapImage.GetPixel(xx, yy).A != 255) {
+                                                faceInfo.hasAlpha = true;
+                                                break;
+                                            }
+                                        }
+                                        if (faceInfo.hasAlpha)
+                                            break;
+                                    }
+                                }
+                                else {
+                                    m_log.DebugFormat("{0} UpdateTextureInfo. Couldn't check for Alpha because image not a bitmap", LogHeader);
+                                }
+                            }
                         })
                         .Catch(e => {
                             m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
