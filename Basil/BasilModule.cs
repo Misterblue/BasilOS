@@ -315,7 +315,7 @@ namespace org.herbal3d.BasilOS {
                         float lr = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy-1, 26);
                         float ul = pScene.Heightmap.GetHeightAtXYZ(xx-1, yy+1, 26);
                         float ur = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy+1, 26);
-                        heightMap[(yy - 1) / 2, (xx - 1) / 2] = (here + ll + lr + ul + ur) / 5;
+                        heightMap[(xx - 1) / 2, (yy - 1) / 2] = (here + ll + lr + ul + ur) / 5;
                     }
                 }
             }
@@ -323,8 +323,7 @@ namespace org.herbal3d.BasilOS {
                 heightMap = new float[XSize, YSize];
                 for (int xx = 0; xx < XSize; xx++) {
                     for (int yy = 0; yy < YSize; yy++) {
-                        // This swap of dimensions seems odd but it is the way LL did it originally
-                        heightMap[yy, xx] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+                        heightMap[xx, yy] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
                     }
                 }
             }
