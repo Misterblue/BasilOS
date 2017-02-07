@@ -306,10 +306,10 @@ namespace org.herbal3d.BasilOS {
 
             float[,] heightMap = new float[XSize, YSize];
             if (m_params.HalfRezTerrain) {
+                // Half resolution mesh that approximates the heightmap
                 heightMap = new float[XSize/2, YSize/2];
                 for (int xx = 1; xx < XSize; xx += 2) {
                     for (int yy = 1; yy < YSize; yy += 2) {
-                        // This swap of dimensions seems odd but it is the way LL did it originally
                         float here = pScene.Heightmap.GetHeightAtXYZ(xx+0, yy+0, 26);
                         float ll = pScene.Heightmap.GetHeightAtXYZ(xx-1, yy-1, 26);
                         float lr = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy-1, 26);
@@ -331,7 +331,7 @@ namespace org.herbal3d.BasilOS {
 
             assetMesher.MeshFromHeightMap(heightMap, (int)m_scene.RegionInfo.RegionSizeX, (int)m_scene.RegionInfo.RegionSizeY, assetFetcher)
                 .Done(epg => {
-                    // we have the mesh. Now figure out the texture.
+                    // we have the mesh. Create a temp texture.
                     FaceInfo faceInfo = epg.primaryExtendePrim.faces[0];
                     faceInfo.textureEntry = new OMV.Primitive.TextureEntryFace(null);
                     faceInfo.textureEntry.TextureID = OMV.UUID.Random();
@@ -553,30 +553,45 @@ namespace org.herbal3d.BasilOS {
 
                 ExtendedPrim newEp = new ExtendedPrim();    // the new object being created
                 FaceInfo newFace = new FaceInfo(0, newEp);
+                ExtendedPrim rootEp = rootFace.containingPrim;
+                // The root entity becomes the identity of the whole thing
+                newEp.SOG = rootEp.SOG;
+                newEp.SOP = rootEp.SOP;
+                newEp.primitive = rootEp.primitive;
+                newEp.coordSystem = rootEp.coordSystem;
+                if (rootEp.positionIsParentRelative) {
+                    newEp.translation = rootEp.SOP.GetWorldPosition();
+                    newEp.rotation = rootEp.SOP.GetWorldRotation();
+                }
+                else {
+                    newEp.translation = rootEp.translation;
+                    newEp.rotation = rootEp.rotation;
+                }
+                newEp.scale = rootEp.scale;
+                newEp.transform = rootEp.transform;
+                newEp.positionIsParentRelative = false;
+                newEp.faces.Add(newFace.num, newFace);
+
                 // Based of the root face, create a new mesh that holds all the faces
                 similar.ForEach(oneSimilarFace => {
                     ExtendedPrim ep = oneSimilarFace.containingPrim;
+                    int indicesBase = newFace.vertexs.Count;
                     if (oneSimilarFace == rootFace) {
-                        // The root entity becomes the identity of the whole thing
-                        newEp.SOG = ep.SOG;
-                        newEp.SOP = ep.SOP;
-                        newEp.primitive = ep.primitive;
-                        newEp.coordSystem = ep.coordSystem;
-                        newEp.translation = ep.translation;
-                        newEp.rotation = ep.rotation;
-                        newEp.scale = ep.scale;
-                        newEp.transform = ep.transform;
-                        newEp.positionIsParentRelative = ep.positionIsParentRelative;
-                        newEp.faces.Add(newFace.num, newFace);
-                    }
-                    if (!ep.isRoot) {
-                        // if the prim for this face is part of a linkset, its position must be rotated from the base
-                        // TODO:
+                        // The vertices for the root face don't need translation.
+                        // FALSE: this is not true if the 'root' of this new entity was not a root prim
+                        oneSimilarFace.vertexs.ForEach(vert => {
+                            newFace.vertexs.Add(vert);
+                        });
                     }
                     else {
-                        // If just a prim in space, offset coords to be relative to the root face
-                        // TODO:
+                        // Any other vertex must be moved to be world coords relative to new root
+                        var worldPos = ep.SOP.GetWorldPosition();
+                        var worldRot = ep.SOP.GetWorldRotation();
+
                     }
+                    oneSimilarFace.indices.ForEach(ind => {
+                        newFace.indices.Add((ushort)(ind + indicesBase));
+                    });
                 });
                 EntityGroup eg = new EntityGroup();
                 eg.Add(new ExtendedPrimGroup(newEp));
@@ -650,7 +665,7 @@ namespace org.herbal3d.BasilOS {
             gltf.BuildPrimitives(CreateAssetURI);
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
-            gltf.BuildBuffers(CreateAssetURI);
+            gltf.BuildBuffers(CreateAssetURI, m_params.VerticesMaxForBuffer);
             
             return gltf;
         }

@@ -90,7 +90,7 @@ namespace org.herbal3d.BasilOS {
             new ParameterDefn<bool>("CreateTerrainSplat", "whether to generate a terrain mesh splat texture",
                 true ),
             new ParameterDefn<int>("VerticesMaxForBuffer", "Number of vertices to cause splitting of buffer files",
-                30000 ),
+                50000 ),
             new ParameterDefn<bool>("HalfRezTerrain", "Whether to reduce the terrain resolution by 2",
                 false ),
             new ParameterDefn<bool>("DisplayTimeScaling", "If to delay mesh scaling to display/GPU time",

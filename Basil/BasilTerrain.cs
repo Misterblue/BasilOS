@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2016 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,15 +88,15 @@ namespace org.herbal3d.BasilOS {
 
             // Make indices for all the vertices.
             // Pass over the matrix and create two triangles for each quad
-            // Clockwise
+            // Counter Clockwise
             for (int xx = 0; xx < sizeX - 1; xx++) {
                 for (int yy = 0; yy < sizeY - 1; yy++) {
                     indices.Add(vertices[xx + 0, yy + 0].index);
-                    indices.Add(vertices[xx + 0, yy + 1].index);
                     indices.Add(vertices[xx + 1, yy + 0].index);
                     indices.Add(vertices[xx + 0, yy + 1].index);
+                    indices.Add(vertices[xx + 0, yy + 1].index);
+                    indices.Add(vertices[xx + 1, yy + 0].index);
                     indices.Add(vertices[xx + 1, yy + 1].index);
-                    indices.Add(vertices[xx + 1, yy + 0].index);
                 }
             }
 

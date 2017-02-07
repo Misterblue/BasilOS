@@ -335,14 +335,14 @@ namespace org.herbal3d.BasilOS {
         // Meshes with FaceInfo's have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
-        public void BuildBuffers(MakeAssetURI makeAssetURI) {
+        public void BuildBuffers(MakeAssetURI makeAssetURI, int maxVerticesPerBuffer) {
             // Partition the meshes into smaller groups based on number of vertices going out
             List<GltfMesh> partial = new List<GltfMesh>();
             int totalVertices = 0;
             meshes.ForEach(mesh => {
                 totalVertices += mesh.underlyingMesh.vertexs.Count;
                 partial.Add(mesh);
-                if (totalVertices > 30000) {
+                if (totalVertices > maxVerticesPerBuffer) {
                     BuildBufferForSomeMeshes(partial, makeAssetURI);
                     partial.Clear();
                     totalVertices = 0;
@@ -433,10 +433,9 @@ namespace org.herbal3d.BasilOS {
 
             // Copy the vertices into the output binary buffer 
             // Buffer.BlockCopy only moves primitives. Copy the vertices into a float array.
-            float[] floatVertexRemapped = new float[vertexCollection.Count * 8];
+            float[] floatVertexRemapped = new float[vertexCollection.Count * sizeof(float) * 8];
             int jj = 0;
             vertexCollection.ForEach(vert => {
-                // m_log.DebugFormat("{0} jj={1}, pos={2}, norm={3}, tex={4}", LogHeader, jj, vert.Position, vert.Normal, vert.TexCoord);
                 floatVertexRemapped[jj++] = vert.Position.X;
                 floatVertexRemapped[jj++] = vert.Position.Y;
                 floatVertexRemapped[jj++] = vert.Position.Z;
@@ -447,6 +446,7 @@ namespace org.herbal3d.BasilOS {
                 floatVertexRemapped[jj++] = vert.TexCoord.Y;
             });
             Buffer.BlockCopy(floatVertexRemapped, 0, binBuffRaw, binVerticesView.byteOffset, binVerticesView.byteLength);
+            floatVertexRemapped = null;
 
             // For each mesh, copy the indices into the binary output buffer and create the accessors
             //    that point from the mesh into the binary info.
