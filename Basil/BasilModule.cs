@@ -194,11 +194,13 @@ namespace org.herbal3d.BasilOS {
                                     // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
                                     //     by repositioning the vertices in the shared meshes so they act as one mesh
                                     ConvertSharedFacesIntoMeshes(reorgScene);
+                                    m_log.DebugFormat("{0} After ConvertSharedFacesIntoMeshes", LogHeader);
 
                                     // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
 
                                     // Build the GLTF structures from the reorganized scene
                                     Gltf gltf = ConvertReorgSceneToGltf(reorgScene);
+                                    m_log.DebugFormat("{0} After ConvertReorgSceneToGltf", LogHeader);
 
                                     // Scan through all the textures and convert them into PNGs for the Gltf scene
                                     if (m_params.ExportTextures) {
@@ -207,6 +209,7 @@ namespace org.herbal3d.BasilOS {
                                     }
 
                                     // Write out the Gltf information
+                                    m_log.DebugFormat("{0} Before ExportSceneAsGltf", LogHeader);
                                     ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
                                 })
                             ;
@@ -577,7 +580,6 @@ namespace org.herbal3d.BasilOS {
                     int indicesBase = newFace.vertexs.Count;
                     if (oneSimilarFace == rootFace) {
                         // The vertices for the root face don't need translation.
-                        // FALSE: this is not true if the 'root' of this new entity was not a root prim
                         oneSimilarFace.vertexs.ForEach(vert => {
                             newFace.vertexs.Add(vert);
                         });
@@ -586,6 +588,15 @@ namespace org.herbal3d.BasilOS {
                         // Any other vertex must be moved to be world coords relative to new root
                         var worldPos = ep.SOP.GetWorldPosition();
                         var worldRot = ep.SOP.GetWorldRotation();
+                        var invWorldRot = OMV.Quaternion.Inverse(worldRot);
+                        var rotrot = invWorldRot * newEp.rotation;
+                        oneSimilarFace.vertexs.ForEach(vert => {
+                            OMVR.Vertex newVert = new OMVR.Vertex();
+                            newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
+                            newVert.Normal = vert.Normal * rotrot;
+                            newVert.TexCoord = vert.TexCoord;
+                            newFace.vertexs.Add(newVert);
+                        });
 
                     }
                     oneSimilarFace.indices.ForEach(ind => {
@@ -648,17 +659,23 @@ namespace org.herbal3d.BasilOS {
                 AddNodeToGltf(gltf, gScene, eg);
             });
 
-            // DEBUG DEBUG: rebuiltFaceEntities is not working yet.
-            // The rebuilt static entities are added next
-            // reorgScene.rebuiltFaceEntities.ForEach(eg => {
-            //     AddNodeToGltf(gltf, eg);
-            // });
+            bool outputStatic = false;
 
-            // DEBUG DEBUG: for testing, just pass through the static elements
-            reorgScene.staticEntities.ForEach(eg => {
-                // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
-                AddNodeToGltf(gltf, gScene, eg);
-            });
+            if (outputStatic) {
+                // The rebuilt static entities are added next
+                reorgScene.rebuiltFaceEntities.ForEach(eg => {
+                    m_log.DebugFormat("{0} ConvertReorgSceneToGltf. adding rebuilt node. id={1}",
+                                LogHeader, eg.First().primaryExtendePrim.ID);
+                    AddNodeToGltf(gltf, gScene, eg);
+                });
+            }
+            else {
+                // DEBUG DEBUG: for testing, just pass through the static elements
+                reorgScene.staticEntities.ForEach(eg => {
+                    // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
+                    AddNodeToGltf(gltf, gScene, eg);
+                });
+            }
 
             // Scan all the meshes and build the materials from the face texture information
             gltf.BuildPrimitives(CreateAssetURI);
@@ -748,7 +765,6 @@ namespace org.herbal3d.BasilOS {
             foreach (FaceInfo faceInfo in ep.faces.Values) {
                 string meshID = ep.ID.ToString() + "_face" + faceInfo.num.ToString();
                 GltfMesh mesh = new GltfMesh(pGltf, meshID);
-                // m_log.DebugFormat("{0} GltfNodeFromExtendedPrim. Face. id={1}", LogHeader, meshID);
                 mesh.underlyingPrim = ep;
                 mesh.underlyingMesh = faceInfo;
                 newNode.meshes.Add(mesh);
