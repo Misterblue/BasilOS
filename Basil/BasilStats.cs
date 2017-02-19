@@ -74,35 +74,27 @@ namespace org.herbal3d.BasilOS {
 
             allEntities.ForEachExtendedPrim(ep => {
                 // Count total prim faces
-                if (ep.facetedMesh != null) {
-                    stats.numFaces += ep.facetedMesh.Faces.Count;
-                }
+                stats.numFaces += ep.faces.Count;
 
-                // Get the number of unique materials
-                for (int ii = 0; ii < ep.faces.Count; ii++) {
-                    OMV.Primitive.TextureEntryFace tef = ep.faces[ii].textureEntry;
-                    if (ep.facetedMesh.Faces[ii].TextureFace == null) {
+                foreach (var faceInfo in ep.faces.Values) {
+                    OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
+                    if (tef == ep.fromOS.primitive.Textures.DefaultTexture) {
                         numNullTexturedFaces++;
                     }
-                    if (tef != null) {
-                        int hashCode = tef.GetHashCode();
-                        if (!faceMaterials.ContainsKey(hashCode)) {
-                            faceMaterials.Add(hashCode, tef);
-                        }
+                    // Compute number of unique materials
+                    int hashCode = tef.GetHashCode();
+                    if (!faceMaterials.ContainsKey(hashCode)) {
+                        faceMaterials.Add(hashCode, tef);
                     }
-                    else {
-                        m_log.DebugFormat("{0} tef is null!! id={1}, ii={2}", LogHeader, ep.ID, ii);
+
+                    if (faceInfo.textureID != null) {
+                        OMV.UUID textureID = (OMV.UUID)faceInfo.textureID;
+                        if (!stats.textureIDs.Contains(textureID)) {
+                            stats.textureIDs.Add(textureID);
+                        }
                     }
                 }
             });
-
-            // Get number of unique textures
-            foreach (KeyValuePair<int, OMV.Primitive.TextureEntryFace> kvp in faceMaterials) {
-                OMV.UUID textureID = kvp.Value.TextureID;
-                if (!stats.textureIDs.Contains(textureID)) {
-                    stats.textureIDs.Add(textureID);
-                }
-            }
 
             stats.numMaterials = faceMaterials.Count;
         }

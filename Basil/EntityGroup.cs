@@ -57,6 +57,7 @@ namespace org.herbal3d.BasilOS {
         public int num;                 // number of this face on the prim
         public List<OMVR.Vertex> vertexs;
         public List<ushort> indices;
+        public OMV.Vector3 faceCenter;
 
         public ExtendedPrim containingPrim;
 
@@ -77,6 +78,7 @@ namespace org.herbal3d.BasilOS {
             containingPrim = pContainingPrim;
             vertexs = new List<OMVR.Vertex>();
             indices = new List<ushort>();
+            faceCenter = OMV.Vector3.Zero;
             // textureEntry = DefaultWhite;
             hasAlpha = false;
             fullAlpha = false;
@@ -90,10 +92,16 @@ namespace org.herbal3d.BasilOS {
     // All the information about the meshed piece is collected here so other mappings
     //     can happen with the returned information (creating Basil Entitities, etc)
     public class ExtendedPrim {
-        public SceneObjectGroup SOG { get; set; }
-        public SceneObjectPart SOP { get; set; }
-        public OMV.Primitive primitive { get; set; }
-        public OMVR.FacetedMesh facetedMesh { get; set; }
+        public struct FromOSEntities {
+            // This separates pointers into OpenSimulator structures so it is
+            //     easy to find the references. All info should be copied into
+            //     the ExtendedPrim when created so these are here for debugging mostly.
+            public SceneObjectGroup SOG { get; set; }
+            public SceneObjectPart SOP { get; set; }
+            public OMV.Primitive primitive { get; set; }
+            public OMVR.FacetedMesh facetedMesh { get; set; }
+        };
+        public FromOSEntities fromOS;
         public OMV.UUID ID;
         public string Name;
 
@@ -109,12 +117,23 @@ namespace org.herbal3d.BasilOS {
 
         // This logic is here mostly because there are some entities that are not scene objects.
         // Terrain, in particular.
+        // Someone can force root state by setting this value otherwise the rootedness of the underlying
+        //     SOP is used.
+        private bool? m_isRoot = null;
         public bool isRoot {
             get {
                 bool ret = true;
-                if (SOP != null && !SOP.IsRoot)
-                    ret = false;
+                if (m_isRoot == null) {
+                    if (fromOS.SOP != null && !fromOS.SOP.IsRoot)
+                        ret = false;
+                }
+                else {
+                    ret = (bool)m_isRoot;
+                }
                 return ret;
+            }
+            set {
+                m_isRoot = value;
             }
         }
 
@@ -128,48 +147,58 @@ namespace org.herbal3d.BasilOS {
         // Initialize an ExtendedPrim from the OpenSimulator structures.
         // Note that the translation and rotation are copied into the ExtendedPrim for later coordinate modification.
         public ExtendedPrim(SceneObjectGroup pSOG, SceneObjectPart pSOP, OMV.Primitive pPrim, OMVR.FacetedMesh pFMesh) {
-            SOG = pSOG;
-            SOP = pSOP;
-            primitive = pPrim;
-            facetedMesh = pFMesh;
+            fromOS.SOG = pSOG;
+            fromOS.SOP = pSOP;
+            fromOS.primitive = pPrim;
+            fromOS.facetedMesh = pFMesh;
             translation = new OMV.Vector3(0, 0, 0);
             rotation = OMV.Quaternion.Identity;
             scale = OMV.Vector3.One;
             transform = null;       // matrix overrides the translation/rotation. Start with no matrix.
             coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
 
-            if (SOP != null) {
-                ID = SOP.UUID;
-                Name = SOP.Name;
+            if (fromOS.SOP != null) {
+                ID = fromOS.SOP.UUID;
+                Name = fromOS.SOP.Name;
             }
             else {
                 ID = OMV.UUID.Random();
                 Name = "Custom";
             }
 
-            if (SOP != null) {
-                if (SOP.IsRoot) {
-                    translation = SOP.GetWorldPosition();
-                    rotation = SOP.GetWorldRotation();
+            if (fromOS.SOP != null) {
+                if (fromOS.SOP.IsRoot) {
+                    translation = fromOS.SOP.GetWorldPosition();
+                    rotation = fromOS.SOP.GetWorldRotation();
                     positionIsParentRelative = false;
                 }
                 else {
-                    translation = SOP.OffsetPosition;
-                    rotation = SOP.RotationOffset;
+                    translation = fromOS.SOP.OffsetPosition;
+                    rotation = fromOS.SOP.RotationOffset;
                     positionIsParentRelative = true;
                 }
-                scale = SOP.Scale;
+                scale = fromOS.SOP.Scale;
             }
 
             // Copy the vertex information into our face information array.
             // Only the vertex and indices information is put into the face info.
             //       The texture info must be added later.
             faces = new Dictionary<int, FaceInfo>();
+
             for (int ii = 0; ii < pFMesh.Faces.Count; ii++) {
+                OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
+                if (tef == null) {
+                    tef = pPrim.Textures.DefaultTexture;
+                }
                 OMVR.Face aFace = pFMesh.Faces[ii];
                 FaceInfo faceInfo = new FaceInfo(ii, this);
                 faceInfo.vertexs = aFace.Vertices.ToList();
                 faceInfo.indices = aFace.Indices.ToList();
+                faceInfo.faceCenter = aFace.Center;
+                faceInfo.textureEntry = tef;
+                if (tef.RGBA.A != 1f) {
+                    faceInfo.fullAlpha = true;
+                }
 
                 faces.Add(ii, faceInfo);
             }
@@ -177,8 +206,8 @@ namespace org.herbal3d.BasilOS {
 
         public override int GetHashCode() {
             int ret = 0;
-            if (primitive != null) {
-                ret = primitive.GetHashCode();
+            if (fromOS.primitive != null) {
+                ret = fromOS.primitive.GetHashCode();
             }
             else {
                 ret = base.GetHashCode();

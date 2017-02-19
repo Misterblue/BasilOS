@@ -279,7 +279,7 @@ namespace org.herbal3d.BasilOS {
 
             meshes.ForEach(mesh => {
                 GltfMaterial theMaterial = null;
-                int hash = mesh.underlyingMesh.textureEntry.GetHashCode();
+                int hash = mesh.faceInfo.textureEntry.GetHashCode();
                 if (!gltfRoot.materials.GetHash(hash, out theMaterial)) {
                     // Material has not beeen created yet
                     theMaterial = new GltfMaterial(gltfRoot, mesh.ID + "_mat");
@@ -288,17 +288,17 @@ namespace org.herbal3d.BasilOS {
                     GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
                     ext.technique = "LAMBERT";  // or 'BLINN' or 'PHONG'
 
-                    OMV.Color4 aColor = mesh.underlyingMesh.textureEntry.RGBA;
+                    OMV.Color4 aColor = mesh.faceInfo.textureEntry.RGBA;
                     OMV.Vector3 justColor = new OMV.Vector3(aColor.R, aColor.G, aColor.B);
                     ext.values.Add(GltfExtension.valAmbient, justColor);
                     ext.values.Add(GltfExtension.valDiffuse, justColor);
                     // ext.values.Add(GltfExtension.valSpecular, justColor);    // not a value in LAMBERT
                     ext.values.Add(GltfExtension.valTransparency, aColor.A);
                     ext.values.Add(GltfExtension.valEmission, new OMV.Vector3(0.05f, 0.05f, 0.05f));
-
-                    OMV.UUID texID = mesh.underlyingMesh.textureEntry.TextureID;
-                    GltfTexture theTexture = null;
-                    if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
+                    
+                    if (mesh.faceInfo.textureID != null) {
+                        GltfTexture theTexture = null;
+                        OMV.UUID texID = (OMV.UUID)mesh.faceInfo.textureID;
                         if (!gltfRoot.textures.GetByUUID(texID, out theTexture)) {
                             // The texture/image does not exist yet
                             theTexture = new GltfTexture(gltfRoot, texID.ToString() + "_tex");
@@ -317,7 +317,7 @@ namespace org.herbal3d.BasilOS {
                             theTexture.source = theImage;
                         }
                         ext.values.Remove(GltfExtension.valTransparent);
-                        if (mesh.underlyingMesh.hasAlpha) 
+                        if (mesh.faceInfo.hasAlpha) 
                             ext.values.Add(GltfExtension.valTransparent, "true");
                         else
                             ext.values.Add(GltfExtension.valTransparent, "false");
@@ -340,7 +340,7 @@ namespace org.herbal3d.BasilOS {
             List<GltfMesh> partial = new List<GltfMesh>();
             int totalVertices = 0;
             meshes.ForEach(mesh => {
-                totalVertices += mesh.underlyingMesh.vertexs.Count;
+                totalVertices += mesh.faceInfo.vertexs.Count;
                 partial.Add(mesh);
                 if (totalVertices > maxVerticesPerBuffer) {
                     BuildBufferForSomeMeshes(partial, makeAssetURI);
@@ -363,7 +363,7 @@ namespace org.herbal3d.BasilOS {
             ushort vertInd = 0;
             someMeshes.ForEach(mesh => {
                 numMeshes++;
-                FaceInfo faceInfo = mesh.underlyingMesh;
+                FaceInfo faceInfo = mesh.faceInfo;
                 faceInfo.vertexs.ForEach(vert => {
                     numVerts++;
                     if (!vertexIndex.ContainsKey(vert)) {
@@ -381,7 +381,7 @@ namespace org.herbal3d.BasilOS {
             //     mesh.underlyingMesh.face to mesh.newIndices
             int numIndices = 0;
             someMeshes.ForEach(mesh => {
-                FaceInfo faceInfo = mesh.underlyingMesh;
+                FaceInfo faceInfo = mesh.faceInfo;
                 ushort[] newIndices = new ushort[faceInfo.indices.Count];
                 for (int ii = 0; ii < faceInfo.indices.Count; ii++) {
                     OMVR.Vertex aVert = faceInfo.vertexs[(int)faceInfo.indices[ii]];
@@ -484,7 +484,7 @@ namespace org.herbal3d.BasilOS {
                 OMV.Vector3 nmax = new OMV.Vector3(float.MinValue, float.MinValue, float.MinValue);
                 OMV.Vector2 umin = new OMV.Vector2(float.MaxValue, float.MaxValue);
                 OMV.Vector2 umax = new OMV.Vector2(float.MinValue, float.MinValue);
-                mesh.underlyingMesh.vertexs.ForEach(vert => {
+                mesh.faceInfo.vertexs.ForEach(vert => {
                     // OMV.Vector3 has a Min and Max function but it does a 'new' which causes lots of GC thrash
                     vmin.X = Math.Min(vmin.X, vert.Position.X);
                     vmin.Y = Math.Min(vmin.Y, vert.Position.Y);
@@ -836,7 +836,7 @@ namespace org.herbal3d.BasilOS {
         public GltfPrimitives primitives;
         public GltfPrimitive onePrimitive;  // a mesh has one primitive
         public GltfAttributes attributes;
-        public FaceInfo underlyingMesh;
+        public FaceInfo faceInfo;
         public ExtendedPrim underlyingPrim;
         public ushort[] newIndices; // remapped indices posinting to global vertex list
         public GltfMesh(Gltf pRoot, string pID) : base(pRoot, pID) {
