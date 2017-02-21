@@ -171,7 +171,6 @@ namespace org.herbal3d.BasilOS {
 
                         using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
 
-                            //EntityGroupList allSOGs = new EntityGroupList();
                             ConvertEntitiesToMeshes(assetFetcher, stats)
                                 .Done(allSOGs => {
                                     // Everything has been converted into meshes and available in 'allSOGs'.
@@ -560,12 +559,13 @@ namespace org.herbal3d.BasilOS {
                 newEp.ID = OMV.UUID.Random();
                 newEp.coordSystem = rootEp.coordSystem;
                 newEp.isRoot = true;
+                newEp.positionIsParentRelative = false;
 
+                // The merged mesh is located at the root's location with no rotation
                 newEp.translation = rootEp.fromOS.SOP.GetWorldPosition();
-                newEp.rotation = rootEp.fromOS.SOP.GetWorldRotation();
+                newEp.rotation = OMV.Quaternion.Identity;
 
                 newEp.scale = rootEp.scale;
-                newEp.positionIsParentRelative = false;
 
                 // The 'new ExtendedPrim' above copied the faceted mesh faces. We're doing it over so undo that.
                 newEp.faces.Clear();
@@ -574,31 +574,59 @@ namespace org.herbal3d.BasilOS {
                 newFace.textureID = rootFace.textureID;
                 newEp.faces.Add(newFace.num, newFace);
 
+                m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
+                            LogHeader, newEp.translation, newEp.rotation);
+
                 // Based of the root face, create a new mesh that holds all the faces
                 similarFaceList.ForEach(faceInfo => {
                     // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: h={1}, verts={2}. ind={3}",
                     //                 LogHeader, similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
+                    // 'faceInfo' and 'ep' is the vertex/indices we're adding to 'newFace'
                     ExtendedPrim ep = faceInfo.containingPrim;
+                    // The indices of the mesh being added needs to be advanced 'indicesBase' since the vertices are
+                    //     added to the end of the existing list.
                     int indicesBase = newFace.vertexs.Count;
+
+                    // Translate all the new vertices to world coordinates then subtract the 'newEp' location.
+                    // All rotation is removed to make computation simplier
+
+                    OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
+                    OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
+                    newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
+                        OMVR.Vertex newVert = new OMVR.Vertex();
+                        var worldLocationOfVertex = vert.Position * worldRot + worldPos;
+                        newVert.Position = worldLocationOfVertex - newEp.translation;
+                        newVert.Normal = vert.Normal * worldRot;
+                        newVert.TexCoord = vert.TexCoord;
+                        return newVert;
+                    }));
+                    newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
+
+                    /* Old code kept for reference. Remove when above is working
                     if (faceInfo == rootFace) {
                         // The vertices for the root face don't need translation.
                         newFace.vertexs.AddRange(faceInfo.vertexs);
                     }
                     else {
                         // Any other vertex must be moved to be world coords relative to new root
-                        var worldPos = ep.fromOS.SOP.GetWorldPosition();
-                        var worldRot = ep.fromOS.SOP.GetWorldRotation();
-                        var invWorldRot = OMV.Quaternion.Inverse(worldRot);
-                        var rotrot = invWorldRot * newEp.rotation;
+                        OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
+                        OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
+                        OMV.Quaternion invWorldRot = OMV.Quaternion.Inverse(worldRot);
+                        OMV.Quaternion rotrot = invWorldRot * newEp.rotation;
+                        m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
+                                    LogHeader, worldPos, worldRot);
                         newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
                             OMVR.Vertex newVert = new OMVR.Vertex();
                             newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
                             newVert.Normal = vert.Normal * rotrot;
                             newVert.TexCoord = vert.TexCoord;
+                            m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
+                                            LogHeader, vert.Position, newVert.Position );
                             return newVert;
                         }));
-
                     }
+                    END of old code */
+
                     newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
                 });
                 // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
