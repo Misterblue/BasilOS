@@ -266,7 +266,7 @@ namespace org.herbal3d.BasilOS {
                                 m_log.ErrorFormat("{0} Error creating terrain: {1}", LogHeader, e);
                                 prom.Reject(new Exception("Failed to create terrain: " + e.ToString()));
                             })
-                            .Done(ePrimGroup => {
+                            .Then(ePrimGroup => {
                                 egl.Add(ePrimGroup);
                                 prom.Resolve(egl);
                             }
@@ -574,13 +574,14 @@ namespace org.herbal3d.BasilOS {
                 newFace.textureID = rootFace.textureID;
                 newEp.faces.Add(newFace.num, newFace);
 
-                m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
-                            LogHeader, newEp.translation, newEp.rotation);
+                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
+                //             LogHeader, newEp.translation, newEp.rotation);
 
                 // Based of the root face, create a new mesh that holds all the faces
                 similarFaceList.ForEach(faceInfo => {
-                    // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: h={1}, verts={2}. ind={3}",
-                    //                 LogHeader, similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
+                    // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: adding {1} h={2}, verts={3}, ind={4}",
+                    //                 LogHeader, faceInfo.containingPrim.ID,
+                    //                 similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
                     // 'faceInfo' and 'ep' is the vertex/indices we're adding to 'newFace'
                     ExtendedPrim ep = faceInfo.containingPrim;
                     // The indices of the mesh being added needs to be advanced 'indicesBase' since the vertices are
@@ -592,6 +593,8 @@ namespace org.herbal3d.BasilOS {
 
                     OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
                     OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
+                    // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
+                    //                 LogHeader, faceInfo.containingPrim.ID, worldPos, worldRot);
                     newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
                         OMVR.Vertex newVert = new OMVR.Vertex();
                         var worldLocationOfVertex = vert.Position * worldRot + worldPos;
@@ -830,10 +833,10 @@ namespace org.herbal3d.BasilOS {
                     // Make a clean matrix version.
                     // The libraries tend to create matrices with small numbers (1.119093e-07) for zero.
                     coordTransform = new OMV.Matrix4(
-                                    1,  0,  0,  0,
-                                    0,  0, -1,  0,
-                                    0,  1,  0,  0,
-                                    0,  0,  0,  1);
+                                    1, 0, 0, 0,
+                                    0, 0, -1, 0,
+                                    0, 1, 0, 0,
+                                    0, 0, 0, 1);
                 }
                 if (ep.coordSystem.getUVOrigin != newCoords.getUVOrigin) {
                     flipV = true;
@@ -854,6 +857,9 @@ namespace org.herbal3d.BasilOS {
 
                 // The ExtendedPrim is all converted
                 ep.coordSystem = newCoords;
+            }
+            else {
+                m_log.DebugFormat("{0} FixCoordinates. Not converting coord system", LogHeader);
             }
         }
 
