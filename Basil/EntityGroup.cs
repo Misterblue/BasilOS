@@ -185,22 +185,24 @@ namespace org.herbal3d.BasilOS {
             //       The texture info must be added later.
             faces = new Dictionary<int, FaceInfo>();
 
-            for (int ii = 0; ii < pFMesh.Faces.Count; ii++) {
-                OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
-                if (tef == null) {
-                    tef = pPrim.Textures.DefaultTexture;
-                }
-                OMVR.Face aFace = pFMesh.Faces[ii];
-                FaceInfo faceInfo = new FaceInfo(ii, this);
-                faceInfo.vertexs = aFace.Vertices.ToList();
-                faceInfo.indices = aFace.Indices.ToList();
-                faceInfo.faceCenter = aFace.Center;
-                faceInfo.textureEntry = tef;
-                if (tef.RGBA.A != 1f) {
-                    faceInfo.fullAlpha = true;
-                }
+            if (pPrim != null) {
+                for (int ii = 0; ii < pFMesh.Faces.Count; ii++) {
+                    OMV.Primitive.TextureEntryFace tef = pPrim.Textures.FaceTextures[ii];
+                    if (tef == null) {
+                        tef = pPrim.Textures.DefaultTexture;
+                    }
+                    OMVR.Face aFace = pFMesh.Faces[ii];
+                    FaceInfo faceInfo = new FaceInfo(ii, this);
+                    faceInfo.vertexs = aFace.Vertices.ToList();
+                    faceInfo.indices = aFace.Indices.ToList();
+                    faceInfo.faceCenter = aFace.Center;
+                    faceInfo.textureEntry = tef;
+                    if (tef.RGBA.A != 1f) {
+                        faceInfo.fullAlpha = true;
+                    }
 
-                faces.Add(ii, faceInfo);
+                    faces.Add(ii, faceInfo);
+                }
             }
         }
 

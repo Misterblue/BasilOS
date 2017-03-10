@@ -27,7 +27,7 @@ using Nini.Config;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Region.PhysicsModules.SharedBase;
+using OpenSim.Region.PhysicsModules.SharedBase; // needed to test if objects are physical
 
 using RSG;
 
@@ -36,6 +36,7 @@ using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
 using System.IO;
+using OpenSim.Region.CoreModules.World.LegacyMap;
 
 namespace org.herbal3d.BasilOS {
 
@@ -48,8 +49,8 @@ namespace org.herbal3d.BasilOS {
         private IConfig m_sysConfig = null;
 
         protected Scene m_scene;
-        OMV.Vector3 m_regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
-        OMV.Vector3 m_regionCenter = new OMV.Vector3(Constants.RegionSize/2, Constants.RegionSize/2, 10000f);
+        private OMV.Vector3 m_regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
+        private OMV.Vector3 m_regionCenter = new OMV.Vector3(Constants.RegionSize/2, Constants.RegionSize/2, 0f);
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -169,15 +170,16 @@ namespace org.herbal3d.BasilOS {
 
                     using (BasilStats stats = new BasilStats(m_scene, m_log)) {
 
-                        using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log)) {
+                        using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log, m_params)) {
 
                             ConvertEntitiesToMeshes(assetFetcher, stats)
-                                .Done(allSOGs => {
+                                .Then(allSOGs => {
                                     // Everything has been converted into meshes and available in 'allSOGs'.
                                     m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
 
                                     // Scan the entities and reorganize into static/non-static and find shared face meshes
                                     ReorganizeScene(allSOGs, reorgScene);
+                                    m_log.InfoFormat("{0} Scene reorganized", LogHeader);
 
                                     // Scan all the entities and extract statistics
                                     if (m_params.LogConversionStats) {
@@ -261,18 +263,20 @@ namespace org.herbal3d.BasilOS {
                     EntityGroupList egl = new EntityGroupList(eg.ToList());
                     // If terrain is requested, add it to the list of scene entities
                     if (m_params.AddTerrainMesh) {
-                        CreateTerrainMesh(m_scene, assetMesher, assetFetcher, stats)
-                            .Catch(e => {
-                                m_log.ErrorFormat("{0} Error creating terrain: {1}", LogHeader, e);
-                                prom.Reject(new Exception("Failed to create terrain: " + e.ToString()));
-                            })
-                            .Then(ePrimGroup => {
-                                egl.Add(ePrimGroup);
-                                prom.Resolve(egl);
-                            }
-                        );
+                        m_log.DebugFormat("{0} ConvertEntitiesToMeshes: building and adding terrain", LogHeader);
+                        try {
+                            var ePrimGroup = CreateTerrainMesh(m_scene, assetMesher, assetFetcher, stats);
+                            m_log.DebugFormat("{0} ConvertEntitiesToMeshes: completed creation. Adding to mesh set", LogHeader);
+                            egl.Add(ePrimGroup);
+                            prom.Resolve(egl);
+                        }
+                        catch (Exception e) {
+                            m_log.ErrorFormat("{0} Error creating terrain: {1}", LogHeader, e);
+                            prom.Reject(new Exception("Failed to create terrain: " + e.ToString()));
+                        }
                     }
                     else {
+                        m_log.DebugFormat("{0} ConvertEntitiesToMeshes: not creating terrain. Just resolving", LogHeader);
                         prom.Resolve(egl);
                     }
                 });
@@ -322,15 +326,15 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Create a mesh for the terrain of the current scene
-        private IPromise<EntityGroup> CreateTerrainMesh(Scene pScene, PrimToMesh assetMesher,
+        private EntityGroup CreateTerrainMesh(Scene pScene, PrimToMesh assetMesher,
                             IAssetFetcherWrapper assetFetcher, BasilStats stats) {
-            var prom = new Promise<EntityGroup>();
 
             int XSize = pScene.Heightmap.Width;
             int YSize = pScene.Heightmap.Height;
 
             float[,] heightMap = new float[XSize, YSize];
             if (m_params.HalfRezTerrain) {
+                m_log.DebugFormat("{0}: CreateTerrainMesh. creating half sized terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
                 // Half resolution mesh that approximates the heightmap
                 heightMap = new float[XSize/2, YSize/2];
                 for (int xx = 1; xx < XSize; xx += 2) {
@@ -345,6 +349,7 @@ namespace org.herbal3d.BasilOS {
                 }
             }
             else {
+                m_log.DebugFormat("{0}: CreateTerrainMesh. creating terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
                 heightMap = new float[XSize, YSize];
                 for (int xx = 0; xx < XSize; xx++) {
                     for (int yy = 0; yy < YSize; yy++) {
@@ -353,19 +358,42 @@ namespace org.herbal3d.BasilOS {
                 }
             }
 
-            assetMesher.MeshFromHeightMap(heightMap, (int)m_scene.RegionInfo.RegionSizeX, (int)m_scene.RegionInfo.RegionSizeY, assetFetcher)
-                .Done(epg => {
-                    // we have the mesh. Create a temp texture.
-                    FaceInfo faceInfo = epg.primaryExtendePrim.faces.Values.First();
-                    faceInfo.textureEntry = new OMV.Primitive.TextureEntryFace(null);
-                    faceInfo.textureEntry.TextureID = OMV.UUID.Random();
+            m_log.DebugFormat("{0}: CreateTerrainMesh. calling MeshFromHeightMap", LogHeader);
+            ExtendedPrimGroup epg = assetMesher.MeshFromHeightMap(heightMap, (int)m_scene.RegionInfo.RegionSizeX, (int)m_scene.RegionInfo.RegionSizeY);
 
-                    EntityGroup eg = new EntityGroup();
-                    eg.Add(epg);
-                    prom.Resolve(eg);
-                });
-            
-            return prom;
+            // Number found in RegionSettings.cs as DEFAULT_TERRAIN_TEXTURE_3
+            OMV.UUID defaultTextureID = new OMV.UUID("179cdabd-398a-9b6b-1391-4dc333ba321f");
+            OMV.Primitive.TextureEntry te = new OMV.Primitive.TextureEntry(defaultTextureID);
+
+            bool createTerrainTexture = true;
+            if (createTerrainTexture) {
+                // Use the OpenSim maptile generator to create a texture for the terrain
+                var terrainRenderer = new TexturedMapTileRenderer();
+                terrainRenderer.Initialise(m_scene, m_sysConfig.ConfigSource);
+
+                var mapbmp = new Bitmap((int)m_scene.Heightmap.Width, (int)m_scene.Heightmap.Height,
+                                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                terrainRenderer.TerrainToBitmap(mapbmp);
+
+                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim);
+                fi.textureEntry = te.CreateFace(0);
+                fi.textureID = OMV.UUID.Random();
+                fi.faceImage = mapbmp;
+                CreateAssetURI(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), out fi.imageFilename, out fi.imageURI);
+                epg.primaryExtendePrim.faces.Add(0, fi);
+            }
+            else {
+                // Fabricate a texture
+                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim);
+                fi.textureEntry = te.CreateFace(0);
+                fi.textureID = defaultTextureID;
+                epg.primaryExtendePrim.faces.Add(0, fi);
+            }
+
+            EntityGroup eg = new EntityGroup();
+            eg.Add(epg);
+
+            return eg;
         }
 
         /// <summary>
@@ -382,39 +410,45 @@ namespace org.herbal3d.BasilOS {
                 // While we're in the neighborhood, map the texture coords based on the prim information
                 pMesher.UpdateCoords(faceInfo, ep.fromOS.primitive);
 
-                // If the texture includes an image, read it in.
-                OMV.UUID texID = faceInfo.textureEntry.TextureID;
-                if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
-                    faceInfo.textureID = texID;
-                    CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
-                    GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
-                        .Catch(e => {
-                            m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
-                        })
-                        .Then(theImage => {
-                            faceInfo.faceImage = theImage;
-                            faceInfo.hasAlpha = false;
-                            if (Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
-                                // The image could have alpha values in it
-                                Bitmap bitmapImage = theImage as Bitmap;
-                                if (bitmapImage != null) {
-                                    for (int xx = 0; xx < bitmapImage.Width; xx++) {
-                                        for (int yy = 0; yy < bitmapImage.Height; yy++) {
-                                            if (bitmapImage.GetPixel(xx, yy).A != 255) {
-                                                faceInfo.hasAlpha = true;
-                                                break;
-                                            }
-                                        }
-                                        if (faceInfo.hasAlpha)
+                UpdateFaceInfoWithTexture(faceInfo, assetFetcher);
+            }
+        }
+
+        // Check to see if the FaceInfo has a textureID and, if so, read it in and populate the FaceInfo
+        //    with that texture data.
+        private void UpdateFaceInfoWithTexture(FaceInfo faceInfo, IAssetFetcherWrapper assetFetcher) {
+            // If the texture includes an image, read it in.
+            OMV.UUID texID = faceInfo.textureEntry.TextureID;
+            if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
+                faceInfo.textureID = texID;
+                CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
+                GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
+                    .Catch(e => {
+                        m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
+                    })
+                    .Then(theImage => {
+                        faceInfo.faceImage = theImage;
+                        faceInfo.hasAlpha = false;
+                        if (Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
+                            // The image could have alpha values in it
+                            Bitmap bitmapImage = theImage as Bitmap;
+                            if (bitmapImage != null) {
+                                for (int xx = 0; xx < bitmapImage.Width; xx++) {
+                                    for (int yy = 0; yy < bitmapImage.Height; yy++) {
+                                        if (bitmapImage.GetPixel(xx, yy).A != 255) {
+                                            faceInfo.hasAlpha = true;
                                             break;
+                                        }
                                     }
-                                }
-                                else {
-                                    m_log.DebugFormat("{0} UpdateTextureInfo. Couldn't check for Alpha because image not a bitmap", LogHeader);
+                                    if (faceInfo.hasAlpha)
+                                        break;
                                 }
                             }
-                        });
-                }
+                            else {
+                                m_log.DebugFormat("{0} UpdateTextureInfo. Couldn't check for Alpha because image not a bitmap", LogHeader);
+                            }
+                        }
+                    });
             }
         }
 
@@ -428,10 +462,9 @@ namespace org.herbal3d.BasilOS {
                 prom.Resolve(textureCache[hash]);
             }
             else {
-                assetFetcher.FetchRawAsset(textureHandle)
-                .Then(theData => {
+                assetFetcher.FetchTextureAsImage(textureHandle)
+                .Then(theImage => {
                     try {
-                        Image theImage = CSJ2K.J2kImage.FromBytes(theData);
                         textureCache.Add(textureHandle.GetHashCode(), theImage);
                         // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", LogHeader, textureHandle, hash);
                         prom.Resolve(theImage);
@@ -470,8 +503,8 @@ namespace org.herbal3d.BasilOS {
                     reorgScene.nonStaticEntities.Add(eGroup);
                 }
             });
-            // m_log.DebugFormat("{0} {1} CHECK num dynmaic elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
-            // m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
+            m_log.DebugFormat("{0} {1} CHECK num dynmaic elements={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
+            m_log.DebugFormat("{0} {1} CHECK num static elements={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
 
             // Go through all the static items and make a list of all the meshes with similar textures
             // Transform reorgScene.staticEntities into reorgScene.similarFaces
@@ -562,8 +595,14 @@ namespace org.herbal3d.BasilOS {
                 newEp.positionIsParentRelative = false;
 
                 // The merged mesh is located at the root's location with no rotation
-                newEp.translation = rootEp.fromOS.SOP.GetWorldPosition();
+                if (rootEp.fromOS.SOP != null) {
+                    newEp.translation = rootEp.fromOS.SOP.GetWorldPosition();
+                }
+                else {
+                    newEp.translation = OMV.Vector3.Zero;
+                }
                 newEp.rotation = OMV.Quaternion.Identity;
+
 
                 newEp.scale = rootEp.scale;
 
@@ -591,8 +630,12 @@ namespace org.herbal3d.BasilOS {
                     // Translate all the new vertices to world coordinates then subtract the 'newEp' location.
                     // All rotation is removed to make computation simplier
 
-                    OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
-                    OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
+                    OMV.Vector3 worldPos = m_regionCenter;
+                    OMV.Quaternion worldRot = OMV.Quaternion.Identity;
+                    if (ep.fromOS.SOP != null) {
+                        worldPos = ep.fromOS.SOP.GetWorldPosition();
+                        worldRot = ep.fromOS.SOP.GetWorldRotation();
+                    }
                     // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
                     //                 LogHeader, faceInfo.containingPrim.ID, worldPos, worldRot);
                     newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
@@ -658,6 +701,7 @@ namespace org.herbal3d.BasilOS {
                     string texFilename = faceInfo.imageFilename;
                     if (!File.Exists(texFilename)) {
                         try {
+                            /*
                             using (Bitmap textureBitmap = new Bitmap(texImage.Width, texImage.Height,
                                         System.Drawing.Imaging.PixelFormat.Format32bppArgb)) {
                                 // convert the raw image into a channeled image
@@ -668,6 +712,8 @@ namespace org.herbal3d.BasilOS {
                                 // Write out the converted image as PNG
                                 textureBitmap.Save(texFilename, System.Drawing.Imaging.ImageFormat.Png);
                             }
+                            */
+                            texImage.Save(texFilename, System.Drawing.Imaging.ImageFormat.Png);
                         }
                         catch (Exception e) {
                             m_log.ErrorFormat("{0} FAILED PNG FILE CREATION: {0}", e);

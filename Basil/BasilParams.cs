@@ -25,7 +25,7 @@ using System.Text;
 using Nini.Config;
 
 namespace org.herbal3d.BasilOS {
-    class BasilParams {
+    public class BasilParams {
         private static string LogHeader = "[BASIL PARAMS]";
 
         public BasilParams() {
@@ -48,6 +48,8 @@ namespace org.herbal3d.BasilOS {
         public bool DisplayTimeScaling; // 'true' if to delay mesh scaling to display/GPU time
 
         public string URIBase;          // the URI base to be added to the beginning of the asset name
+
+        public bool UseOpenSimImageDecoder; //  Use the OpenSimulator image decoder to process JPEG2000 images
 
         public bool LogConversionStats; // output numbers about number of entities converted
         public bool LogDetailedSharedFaceStats; // output numbers about face mesh sharing
@@ -97,6 +99,8 @@ namespace org.herbal3d.BasilOS {
                 false ),
             new ParameterDefn<string>("URIBase", "the string added to be beginning of asset name to create URI",
                 "./" ),
+            new ParameterDefn<bool>("UseOpenSimImageDecoder", "Use the OpenSimulator image decoder to process JPEG2000 images",
+                false ),
             new ParameterDefn<bool>("LogConversionStats", "output numbers about number of entities converted",
                 true ),
             new ParameterDefn<bool>("LogDetailedSharedFaceStats", "output numbers about face mesh sharing",

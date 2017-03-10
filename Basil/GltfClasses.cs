@@ -289,18 +289,19 @@ namespace org.herbal3d.BasilOS {
                     ext.technique = "LAMBERT";  // or 'BLINN' or 'PHONG'
 
                     OMV.Color4 aColor = mesh.faceInfo.textureEntry.RGBA;
-                    OMV.Vector3 justColor = new OMV.Vector3(aColor.R, aColor.G, aColor.B);
-                    ext.values.Add(GltfExtension.valAmbient, justColor);
-                    ext.values.Add(GltfExtension.valDiffuse, justColor);
-                    // ext.values.Add(GltfExtension.valSpecular, justColor);    // not a value in LAMBERT
+                    ext.values.Add(GltfExtension.valAmbient, aColor);
+                    ext.values.Add(GltfExtension.valDiffuse, aColor);
+                    // ext.values.Add(GltfExtension.valSpecular, aColor);    // not a value in LAMBERT
                     ext.values.Add(GltfExtension.valTransparency, aColor.A);
-                    ext.values.Add(GltfExtension.valEmission, new OMV.Vector3(0.05f, 0.05f, 0.05f));
+                    // ext.values.Add(GltfExtension.valEmission, new OMV.Color4(0.05f, 0.05f, 0.05f, 1.0f));
                     
                     if (mesh.faceInfo.textureID != null) {
+                        // There is an image texture with this mesh.
+                        // Create all the structures for an image.
                         GltfTexture theTexture = null;
                         OMV.UUID texID = (OMV.UUID)mesh.faceInfo.textureID;
+                        // Look up the texture to see if already created. If not, build texture info.
                         if (!gltfRoot.textures.GetByUUID(texID, out theTexture)) {
-                            // The texture/image does not exist yet
                             theTexture = new GltfTexture(gltfRoot, texID.ToString() + "_tex");
                             theTexture.underlyingUUID = texID;
                             theTexture.target = WebGLConstants.TEXTURE_2D;
@@ -316,14 +317,12 @@ namespace org.herbal3d.BasilOS {
                             }
                             theTexture.source = theImage;
                         }
-                        ext.values.Remove(GltfExtension.valTransparent);
-                        if (mesh.faceInfo.hasAlpha) 
-                            ext.values.Add(GltfExtension.valTransparent, "true");
-                        else
-                            ext.values.Add(GltfExtension.valTransparent, "false");
-
+                        // Remove the defaults created above and add new values for the texture
                         ext.values.Remove(GltfExtension.valDiffuse);
                         ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
+
+                        ext.values.Remove(GltfExtension.valTransparent);
+                        ext.values.Add(GltfExtension.valTransparent, mesh.faceInfo.hasAlpha);
                     }
 
                     theMaterial.extensions.Add(ext);
@@ -340,13 +339,14 @@ namespace org.herbal3d.BasilOS {
             List<GltfMesh> partial = new List<GltfMesh>();
             int totalVertices = 0;
             meshes.ForEach(mesh => {
-                totalVertices += mesh.faceInfo.vertexs.Count;
-                partial.Add(mesh);
-                if (totalVertices > maxVerticesPerBuffer) {
+                // If adding this mesh will push the total vertices in this buffer over the max, flush this buffer.
+                if ((totalVertices + mesh.faceInfo.vertexs.Count) > maxVerticesPerBuffer) {
                     BuildBufferForSomeMeshes(partial, makeAssetURI);
                     partial.Clear();
                     totalVertices = 0;
                 }
+                totalVertices += mesh.faceInfo.vertexs.Count;
+                partial.Add(mesh);
             });
             if (partial.Count > 0) {
                 BuildBufferForSomeMeshes(partial, makeAssetURI);
@@ -379,6 +379,7 @@ namespace org.herbal3d.BasilOS {
 
             // Remap all the indices to the new, compacted vertex collection.
             //     mesh.underlyingMesh.face to mesh.newIndices
+            // TODO: if num verts > ushort.maxValue, create array if uint's
             int numIndices = 0;
             someMeshes.ForEach(mesh => {
                 FaceInfo faceInfo = mesh.faceInfo;
@@ -433,17 +434,24 @@ namespace org.herbal3d.BasilOS {
 
             // Copy the vertices into the output binary buffer 
             // Buffer.BlockCopy only moves primitives. Copy the vertices into a float array.
+            // This also separates the verts from normals from texCoord since the Babylon
+            //     Gltf reader doesn't handle stride.
             float[] floatVertexRemapped = new float[vertexCollection.Count * sizeof(float) * 8];
-            int jj = 0;
+            int vertexBase = 0;
+            int normalBase = vertexCollection.Count * 3;
+            int texCoordBase = normalBase + vertexCollection.Count * 3;
+            int jj = 0; int kk = 0;
             vertexCollection.ForEach(vert => {
-                floatVertexRemapped[jj++] = vert.Position.X;
-                floatVertexRemapped[jj++] = vert.Position.Y;
-                floatVertexRemapped[jj++] = vert.Position.Z;
-                floatVertexRemapped[jj++] = vert.Normal.X;
-                floatVertexRemapped[jj++] = vert.Normal.Y;
-                floatVertexRemapped[jj++] = vert.Normal.Z;
-                floatVertexRemapped[jj++] = vert.TexCoord.X;
-                floatVertexRemapped[jj++] = vert.TexCoord.Y;
+                floatVertexRemapped[vertexBase + 0 + jj] = vert.Position.X;
+                floatVertexRemapped[vertexBase + 1 + jj] = vert.Position.Y;
+                floatVertexRemapped[vertexBase + 2 + jj] = vert.Position.Z;
+                floatVertexRemapped[normalBase + 0 + jj] = vert.Normal.X;
+                floatVertexRemapped[normalBase + 1 + jj] = vert.Normal.Y;
+                floatVertexRemapped[normalBase + 2 + jj] = vert.Normal.Z;
+                floatVertexRemapped[texCoordBase + 0 + kk] = vert.TexCoord.X;
+                floatVertexRemapped[texCoordBase + 1 + kk] = vert.TexCoord.Y;
+                jj += 3;
+                kk += 2;
             });
             Buffer.BlockCopy(floatVertexRemapped, 0, binBuffRaw, binVerticesView.byteOffset, binVerticesView.byteLength);
             floatVertexRemapped = null;
@@ -510,7 +518,7 @@ namespace org.herbal3d.BasilOS {
                 vertexAccessor.bufferView = binVerticesView;
                 vertexAccessor.count = vertexCollection.Count;
                 vertexAccessor.byteOffset = 0;
-                vertexAccessor.byteStride = sizeof(float) * 8;
+                vertexAccessor.byteStride = sizeof(float) * 3;
                 vertexAccessor.componentType = WebGLConstants.FLOAT;
                 vertexAccessor.type = "VEC3";
                 vertexAccessor.min = new object[3] { vmin.X, vmin.Y, vmin.Z };
@@ -519,8 +527,8 @@ namespace org.herbal3d.BasilOS {
                 GltfAccessor normalsAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accNor");
                 normalsAccessor.bufferView = binVerticesView;
                 normalsAccessor.count = vertexCollection.Count;
-                normalsAccessor.byteOffset = sizeof(float) * 3;
-                normalsAccessor.byteStride = sizeof(float) * 8;
+                normalsAccessor.byteOffset = normalBase * sizeof(float);
+                normalsAccessor.byteStride = sizeof(float) * 3;
                 normalsAccessor.componentType = WebGLConstants.FLOAT;
                 normalsAccessor.type = "VEC3";
                 normalsAccessor.min = new object[3] { nmin.X, nmin.Y, nmin.Z };
@@ -529,8 +537,8 @@ namespace org.herbal3d.BasilOS {
                 GltfAccessor UVAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accUV");
                 UVAccessor.bufferView = binVerticesView;
                 UVAccessor.count = vertexCollection.Count;
-                UVAccessor.byteOffset = sizeof(float) * 6;
-                UVAccessor.byteStride = sizeof(float) * 8;
+                UVAccessor.byteOffset = texCoordBase * sizeof(float);
+                UVAccessor.byteStride = sizeof(float) * 2;
                 UVAccessor.componentType = WebGLConstants.FLOAT;
                 UVAccessor.type = "VEC2";
                 UVAccessor.min = new object[2] { umin.X, umin.Y };

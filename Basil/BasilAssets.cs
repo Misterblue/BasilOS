@@ -15,12 +15,13 @@
  */
 
 using System;
+using System.Drawing;
 
 using log4net;
 
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Services.Interfaces;
+using OpenSim.Region.Framework.Interfaces;
 
 using RSG;
 
@@ -32,6 +33,7 @@ namespace org.herbal3d.BasilOS {
     // A Promise based interface to the asset fetcher
     public abstract class IAssetFetcherWrapper : IDisposable {
         public abstract IPromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle);
+        public abstract IPromise<Image> FetchTextureAsImage(EntityHandle handle);
         public abstract IPromise<byte[]> FetchRawAsset(EntityHandle handle);
         public abstract void Dispose();
     }
@@ -42,10 +44,12 @@ namespace org.herbal3d.BasilOS {
         private string LogHeader = "[OSAssetFetcher]";
 
         private Scene m_scene;
+        private BasilParams m_params;
 
-        public OSAssetFetcher(Scene scene, ILog logger) {
+        public OSAssetFetcher(Scene scene, ILog logger, BasilParams pParams) {
             m_scene = scene;
             m_log = logger;
+            m_params = pParams;
         }
 
         public override IPromise<byte[]> FetchRawAsset(EntityHandle handle) {
@@ -82,6 +86,41 @@ namespace org.herbal3d.BasilOS {
                     else {
                         prom.Reject(new Exception("FetchTexture: could not decode JPEG2000 texture. ID=" + handle.ToString()));
                     }
+                }
+                catch (Exception e) {
+                    prom.Reject(new Exception("FetchTexture: exception decoding JPEG2000 texture. ID=" + handle.ToString()
+                                + ", e=" + e.ToString()));
+                }
+            }
+            else {
+                prom.Reject(new Exception("FetchTexture: asset was not of type texture. ID=" + handle.ToString()));
+            }
+
+            return prom;
+        }
+
+        /// <summary>
+        /// Fetch a texture and return an OMVA.AssetTexture. The only information initialized
+        /// in the AssetTexture is the UUID and the binary data.
+        /// </summary>
+        /// <param name="handle"></param>
+        /// <returns></returns>
+        public override IPromise<Image> FetchTextureAsImage(EntityHandle handle) {
+            var prom = new Promise<Image>();
+
+            // Don't bother with async -- this call will hang until the asset is fetched
+            AssetBase asset = m_scene.AssetService.Get(handle.GetOSAssetString());
+            if (asset.IsBinaryAsset && asset.Type == (sbyte)OMV.AssetType.Texture) {
+                try {
+                    Image imageDecoded = null;
+                    if (m_params.UseOpenSimImageDecoder) {
+                        IJ2KDecoder imgDecoder = m_scene.RequestModuleInterface<IJ2KDecoder>();
+                        imageDecoded = imgDecoder.DecodeToImage(asset.Data);
+                    }
+                    else {
+                        imageDecoded = CSJ2K.J2kImage.FromBytes(asset.Data);
+                    }
+                    prom.Resolve(imageDecoded);
                 }
                 catch (Exception e) {
                     prom.Reject(new Exception("FetchTexture: exception decoding JPEG2000 texture. ID=" + handle.ToString()

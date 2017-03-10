@@ -76,23 +76,28 @@ namespace org.herbal3d.BasilOS {
                 // Count total prim faces
                 stats.numFaces += ep.faces.Count;
 
-                foreach (var faceInfo in ep.faces.Values) {
-                    OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
-                    if (tef == ep.fromOS.primitive.Textures.DefaultTexture) {
-                        numNullTexturedFaces++;
-                    }
-                    // Compute number of unique materials
-                    int hashCode = tef.GetHashCode();
-                    if (!faceMaterials.ContainsKey(hashCode)) {
-                        faceMaterials.Add(hashCode, tef);
-                    }
+                try {
+                    foreach (var faceInfo in ep.faces.Values) {
+                        OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
+                        if (ep.fromOS.primitive != null && tef == ep.fromOS.primitive.Textures.DefaultTexture) {
+                            numNullTexturedFaces++;
+                        }
+                        // Compute number of unique materials
+                        int hashCode = tef.GetHashCode();
+                        if (!faceMaterials.ContainsKey(hashCode)) {
+                            faceMaterials.Add(hashCode, tef);
+                        }
 
-                    if (faceInfo.textureID != null) {
-                        OMV.UUID textureID = (OMV.UUID)faceInfo.textureID;
-                        if (!stats.textureIDs.Contains(textureID)) {
-                            stats.textureIDs.Add(textureID);
+                        if (faceInfo.textureID != null) {
+                            OMV.UUID textureID = (OMV.UUID)faceInfo.textureID;
+                            if (!stats.textureIDs.Contains(textureID)) {
+                                stats.textureIDs.Add(textureID);
+                            }
                         }
                     }
+                }
+                catch (Exception e) {
+                    m_log.ErrorFormat("{0} Exception counting textures: {1}", LogHeader, e);
                 }
             });
 

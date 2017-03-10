@@ -62,7 +62,7 @@ namespace org.herbal3d.BasilOS {
                             .Catch(e => {
                                 prom.Reject(e);
                             })
-                            .Done(ePrimGroup => {
+                            .Then(ePrimGroup => {
                                 prom.Resolve(ePrimGroup);
                             });
                     }
@@ -73,7 +73,7 @@ namespace org.herbal3d.BasilOS {
                             .Catch(e => {
                                 prom.Reject(e);
                             })
-                            .Done(fm => {
+                            .Then(fm => {
                                 prom.Resolve(fm);
                             });
                     }
@@ -162,9 +162,9 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
-        public IPromise<ExtendedPrimGroup> MeshFromHeightMap( float[,] pHeightMap, int regionSizeX, int regionSizeY, IAssetFetcherWrapper assetFetcher) {
-
-            var prom = new Promise<ExtendedPrimGroup>();
+        // Returns an ExtendedPrimGroup with a mesh for the passed heightmap.
+        // Note that the returned EPG does not include any face information -- the caller must add a texture.
+        public ExtendedPrimGroup MeshFromHeightMap( float[,] pHeightMap, int regionSizeX, int regionSizeY) {
 
             // OMVR.Face rawMesh = m_mesher.TerrainMesh(pHeightMap, 0, pHeightMap.GetLength(0)-1, 0, pHeightMap.GetLength(1)-1);
             OMVR.Face rawMesh = BasilTerrain.TerrainMesh(pHeightMap, (float)regionSizeX, (float)regionSizeY);
@@ -172,10 +172,11 @@ namespace org.herbal3d.BasilOS {
             facetMesh.Faces = new List<OMVR.Face>() { rawMesh };
 
             ExtendedPrim ep = new ExtendedPrim(null, null, null, facetMesh);
-            ExtendedPrimGroup epg = new ExtendedPrimGroup(ep);
-            prom.Resolve(epg);
+            ep.faces = new Dictionary<int, FaceInfo>();
 
-            return prom;
+            ExtendedPrimGroup epg = new ExtendedPrimGroup(ep);
+
+            return epg;
         }
 
 
