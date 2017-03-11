@@ -37,7 +37,6 @@ namespace org.herbal3d.BasilOS {
         public int numNullTexturedFaces = 0;
         public int numMaterials = 0;
 
-        public Dictionary<int, OMV.Primitive.TextureEntryFace> faceMaterials;
         public List<OMV.UUID> textureIDs = new List<OMV.UUID>();
 
         public Scene m_scene;
@@ -47,34 +46,39 @@ namespace org.herbal3d.BasilOS {
         public BasilStats(Scene pScene, ILog pLog) {
             m_scene = pScene;
             m_log = pLog;
-            faceMaterials = new Dictionary<int, OpenMetaverse.Primitive.TextureEntryFace>();
             textureIDs = new List<OMV.UUID>();
         }
 
         // Gather statistics
-        public void ExtractStatistics(BasilModule.ReorganizedScene reorgScene, BasilStats stats) {
-            EntityGroupList allEntities = reorgScene.staticEntities;
+        public void ExtractStatistics(BasilModule.ReorganizedScene reorgScene) {
+            Dictionary<int, OMV.Primitive.TextureEntryFace> faceMaterials;
+            faceMaterials = new Dictionary<int, OpenMetaverse.Primitive.TextureEntryFace>();
+
+            EntityGroupList allEntities = new EntityGroupList(reorgScene.staticEntities);
             allEntities.AddRange(reorgScene.nonStaticEntities);
 
-            stats.numEntities = allEntities.Count;
-            stats.numStaticEntities = reorgScene.staticEntities.Count;
+            numEntities = allEntities.Count;
+            numStaticEntities = reorgScene.staticEntities.Count;
 
+            numLinksets = 0;
             reorgScene.nonStaticEntities.ForEach(eGroup => {
                 if (eGroup.Count > 1) {
                     // if the entity is made of multiple pieces, they are a linkset
-                    stats.numLinksets++;
+                    numLinksets++;
                 }
             });
+            numStaticLinksets = 0;
             reorgScene.staticEntities.ForEach(eGroup => {
                 if (eGroup.Count > 1) {
-                    stats.numStaticLinksets++;
+                    numStaticLinksets++;
                 }
             });
-            stats.numLinksets += stats.numStaticLinksets;
+            numLinksets += numStaticLinksets;
 
+            numFaces = 0;
             allEntities.ForEachExtendedPrim(ep => {
                 // Count total prim faces
-                stats.numFaces += ep.faces.Count;
+                numFaces += ep.faces.Count;
 
                 try {
                     foreach (var faceInfo in ep.faces.Values) {
@@ -90,8 +94,8 @@ namespace org.herbal3d.BasilOS {
 
                         if (faceInfo.textureID != null) {
                             OMV.UUID textureID = (OMV.UUID)faceInfo.textureID;
-                            if (!stats.textureIDs.Contains(textureID)) {
-                                stats.textureIDs.Add(textureID);
+                            if (!textureIDs.Contains(textureID)) {
+                                textureIDs.Add(textureID);
                             }
                         }
                     }
@@ -101,7 +105,7 @@ namespace org.herbal3d.BasilOS {
                 }
             });
 
-            stats.numMaterials = faceMaterials.Count;
+            numMaterials = faceMaterials.Count;
         }
 
 
@@ -126,8 +130,6 @@ namespace org.herbal3d.BasilOS {
         protected virtual void Dispose(bool disposing) {
             if (!disposedValue) {
                 if (disposing) {
-                    faceMaterials.Clear();
-                    faceMaterials = null;
                     textureIDs.Clear();
                     textureIDs = null;
                 }

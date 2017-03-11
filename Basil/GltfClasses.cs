@@ -265,6 +265,19 @@ namespace org.herbal3d.BasilOS {
         public const string MakeAssetURITypeMesh = "mesh";
         public const string MakeAssetURITypeBuff = "buff";      // binary buffer
 
+        // After all the nodes have been added to a Gltf class, build all the
+        //    dependent structures
+        public void BuildAccessorsAndBuffers(MakeAssetURI makeAssetURI, BasilParams pParams) {
+            
+            // Scan all the meshes and build the materials from the face texture information
+            m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Calling gltf.BuildPrimitives", LogHeader);
+            BuildPrimitives(makeAssetURI);
+
+            // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
+            m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Calling gltf.BuildBuffers", LogHeader);
+            BuildBuffers(makeAssetURI, pParams.VerticesMaxForBuffer);
+        }
+
         // Meshes with FaceInfo's have been added to the scene. Pass over all
         //   the meshes and create the Primitives, Materials, and Images.
         // Called before calling ToJSON().
@@ -286,14 +299,17 @@ namespace org.herbal3d.BasilOS {
                     theMaterial.hash = hash;
 
                     GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
-                    ext.technique = "LAMBERT";  // or 'BLINN' or 'PHONG'
+                    ext.technique = "BLINN";  // 'LAMBERT' or 'BLINN' or 'PHONG'
 
                     OMV.Color4 aColor = mesh.faceInfo.textureEntry.RGBA;
                     ext.values.Add(GltfExtension.valAmbient, aColor);
                     ext.values.Add(GltfExtension.valDiffuse, aColor);
-                    // ext.values.Add(GltfExtension.valSpecular, aColor);    // not a value in LAMBERT
-                    ext.values.Add(GltfExtension.valTransparency, aColor.A);
+                    ext.values.Add(GltfExtension.valEmission, new OMV.Color4(0,0,0,1));
                     // ext.values.Add(GltfExtension.valEmission, new OMV.Color4(0.05f, 0.05f, 0.05f, 1.0f));
+                    ext.values.Add(GltfExtension.valSpecular, new OMV.Color4(0,0,0,1)); // not a value in LAMBERT
+                    if (aColor.A != 1.0f) {
+                        ext.values.Add(GltfExtension.valTransparency, aColor.A);
+                    }
                     
                     if (mesh.faceInfo.textureID != null) {
                         // There is an image texture with this mesh.

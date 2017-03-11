@@ -37,6 +37,8 @@ namespace org.herbal3d.BasilOS {
         public string AssetDirectory;   // root directory of asset storage
         public int WebSocketPort;       // port to open WebSocket listener
 
+        public bool SimplifyScene;      // whether to merge meshes with similar materials
+
         public string GltfTargetDir;    // where to store all the Gltf files
         public bool ExportTextures;     // also export textures to the target dir
         public bool AddTerrainMesh;     // whether to create and add a terrain mesh
@@ -83,6 +85,8 @@ namespace org.herbal3d.BasilOS {
                 "./BasilAssets" ),
             new ParameterDefn<int>("WebSocketPort", "Port for the WebSocket to listen on",
                 34343 ),
+            new ParameterDefn<bool>("SimplifyScene", "whether to merge meshes with similar materials",
+                true ),
             new ParameterDefn<string>("GltfTargetDir", "Where to store all the Gltf files",
                 "./gltf" ),
             new ParameterDefn<bool>("ExportTextures", "Convert textures to PNGs and export to target dir",

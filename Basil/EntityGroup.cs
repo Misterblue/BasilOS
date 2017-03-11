@@ -144,6 +144,10 @@ namespace org.herbal3d.BasilOS {
             faces = new Dictionary<int, FaceInfo>();
         }
 
+        // Make a new extended prim based on an existing one
+        public ExtendedPrim(ExtendedPrim ep) : this(ep.fromOS.SOG, ep.fromOS.SOP, ep.fromOS.primitive, ep.fromOS.facetedMesh) {
+        }
+
         // Initialize an ExtendedPrim from the OpenSimulator structures.
         // Note that the translation and rotation are copied into the ExtendedPrim for later coordinate modification.
         public ExtendedPrim(SceneObjectGroup pSOG, SceneObjectPart pSOP, OMV.Primitive pPrim, OMVR.FacetedMesh pFMesh) {
