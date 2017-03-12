@@ -51,8 +51,8 @@ namespace org.herbal3d.BasilOS {
 
             float stepX = realSizeX / sizeX;    // the real dimension step for each heightmap step
             float stepY = realSizeY / sizeY;
-            float coordStepX = realSizeX / sizeX;    // the coordinate dimension step for each heightmap step
-            float coordStepY = realSizeY / sizeY;
+            float coordStepX = 1.0f / sizeX;    // the coordinate dimension step for each heightmap step
+            float coordStepY = 1.0f / sizeY;
 
             ushort index = 0;
             for (int xx = 0; xx < sizeX; xx++) {

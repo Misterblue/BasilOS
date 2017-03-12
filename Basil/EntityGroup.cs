@@ -74,6 +74,21 @@ namespace org.herbal3d.BasilOS {
                         new OMV.Primitive.TextureEntryFace(null) { TextureID = OMV.Primitive.TextureEntry.WHITE_TEXTURE };
 
         public FaceInfo(int pNum, ExtendedPrim pContainingPrim) {
+            Init(pNum, pContainingPrim);
+        }
+
+        public FaceInfo(int pNum, ExtendedPrim pContainingPrim, OMVR.Face aFace, OMV.Primitive.TextureEntryFace tef) {
+            Init(pNum, pContainingPrim);
+            vertexs = aFace.Vertices.ToList();
+            indices = aFace.Indices.ToList();
+            faceCenter = aFace.Center;
+            textureEntry = tef;
+            if (tef.RGBA.A != 1f) {
+                fullAlpha = true;
+            }
+        }
+
+        private void Init(int pNum, ExtendedPrim pContainingPrim) {
             num = pNum;
             containingPrim = pContainingPrim;
             vertexs = new List<OMVR.Vertex>();
@@ -196,14 +211,7 @@ namespace org.herbal3d.BasilOS {
                         tef = pPrim.Textures.DefaultTexture;
                     }
                     OMVR.Face aFace = pFMesh.Faces[ii];
-                    FaceInfo faceInfo = new FaceInfo(ii, this);
-                    faceInfo.vertexs = aFace.Vertices.ToList();
-                    faceInfo.indices = aFace.Indices.ToList();
-                    faceInfo.faceCenter = aFace.Center;
-                    faceInfo.textureEntry = tef;
-                    if (tef.RGBA.A != 1f) {
-                        faceInfo.fullAlpha = true;
-                    }
+                    FaceInfo faceInfo = new FaceInfo(ii, this, aFace, tef);
 
                     faces.Add(ii, faceInfo);
                 }
@@ -262,6 +270,8 @@ namespace org.herbal3d.BasilOS {
     // list of entities ... can safely add and entity multiple times
     public class EntityGroupList : List<EntityGroup> {
         public EntityGroupList() : base() {
+        }
+        public EntityGroupList(EntityGroupList list) : base(list) {
         }
         public EntityGroupList(List<EntityGroup> list) : base(list) {
         }

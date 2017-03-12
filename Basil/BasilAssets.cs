@@ -110,25 +110,30 @@ namespace org.herbal3d.BasilOS {
 
             // Don't bother with async -- this call will hang until the asset is fetched
             AssetBase asset = m_scene.AssetService.Get(handle.GetOSAssetString());
-            if (asset.IsBinaryAsset && asset.Type == (sbyte)OMV.AssetType.Texture) {
-                try {
-                    Image imageDecoded = null;
-                    if (m_params.UseOpenSimImageDecoder) {
-                        IJ2KDecoder imgDecoder = m_scene.RequestModuleInterface<IJ2KDecoder>();
-                        imageDecoded = imgDecoder.DecodeToImage(asset.Data);
+            if (asset != null) {
+                if (asset.IsBinaryAsset && asset.Type == (sbyte)OMV.AssetType.Texture) {
+                    try {
+                        Image imageDecoded = null;
+                        if (m_params.UseOpenSimImageDecoder) {
+                            IJ2KDecoder imgDecoder = m_scene.RequestModuleInterface<IJ2KDecoder>();
+                            imageDecoded = imgDecoder.DecodeToImage(asset.Data);
+                        }
+                        else {
+                            imageDecoded = CSJ2K.J2kImage.FromBytes(asset.Data);
+                        }
+                        prom.Resolve(imageDecoded);
                     }
-                    else {
-                        imageDecoded = CSJ2K.J2kImage.FromBytes(asset.Data);
+                    catch (Exception e) {
+                        prom.Reject(new Exception("FetchTextureAsImage: exception decoding JPEG2000 texture. ID=" + handle.ToString()
+                                    + ", e=" + e.ToString()));
                     }
-                    prom.Resolve(imageDecoded);
                 }
-                catch (Exception e) {
-                    prom.Reject(new Exception("FetchTexture: exception decoding JPEG2000 texture. ID=" + handle.ToString()
-                                + ", e=" + e.ToString()));
+                else {
+                    prom.Reject(new Exception("FetchTextureAsImage: asset was not of type texture. ID=" + handle.ToString()));
                 }
             }
             else {
-                prom.Reject(new Exception("FetchTexture: asset was not of type texture. ID=" + handle.ToString()));
+                prom.Reject(new Exception("FetchTextureAsImage: could not fetch texture asset. ID=" + handle.ToString()));
             }
 
             return prom;

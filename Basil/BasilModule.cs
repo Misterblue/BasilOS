@@ -185,6 +185,8 @@ namespace org.herbal3d.BasilOS {
                                 // Scan the entities and reorganize into static/non-static and find shared face meshes
                                 ReorganizedScene reorgScene = ReorganizeScene(allSOGs, "region_" + m_scene.Name.ToLower());
 
+                                // Scene objects in reorgScene.nonStaticEntities and reorgScene.staticEntities
+
                                 // Scan all the entities and extract statistics
                                 if (m_params.LogConversionStats) {
                                     stats.ExtractStatistics(reorgScene);
@@ -211,7 +213,10 @@ namespace org.herbal3d.BasilOS {
                                 // Build the GLTF structures from the reorganized scene
                                 Gltf gltf = null;
                                 try {
-                                    gltf = ConvertReorgSceneToGltf(reorgScene);
+                                    // gltf = ConvertReorgSceneToGltf(reorgScene);
+                                    var groupsToConvert = new EntityGroupList(reorgScene.nonStaticEntities);
+                                    groupsToConvert.AddRange(reorgScene.rebuiltFaceEntities);
+                                    gltf = ConvertReorgSceneToGltf(groupsToConvert, reorgScene.regionID);
                                 }
                                 catch (Exception e) {
                                     m_log.ErrorFormat("{0} Exception calling ConvertReorgSceneToGltf: {1}", LogHeader, e);
@@ -379,18 +384,20 @@ namespace org.herbal3d.BasilOS {
                                         System.Drawing.Imaging.PixelFormat.Format24bppRgb);
                 terrainRenderer.TerrainToBitmap(mapbmp);
 
-                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim);
-                fi.textureEntry = te.CreateFace(0);
+                // The built terrain mesh will have one face in the mesh
+                OMVR.Face aFace = epg.primaryExtendePrim.fromOS.facetedMesh.Faces.First();
+                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim, aFace, te.CreateFace(0));
                 fi.textureID = OMV.UUID.Random();
                 fi.faceImage = mapbmp;
                 fi.hasAlpha = false;
                 CreateAssetURI(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), out fi.imageFilename, out fi.imageURI);
-                epg.primaryExtendePrim.faces.Add(0, fi);
+                epg.primaryExtendePrim.faces.Add(fi.num, fi);
             }
             else {
                 // Fabricate a texture
-                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim);
-                fi.textureEntry = te.CreateFace(0);
+                // The built terrain mesh will have one face in the mesh
+                OMVR.Face aFace = epg.primaryExtendePrim.fromOS.facetedMesh.Faces.First();
+                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim, aFace, te.CreateFace(0));
                 fi.textureID = defaultTextureID;
                 assetFetcher.FetchTextureAsImage(new EntityHandle(defaultTextureID))
                     .Catch(e => {
@@ -402,7 +409,7 @@ namespace org.herbal3d.BasilOS {
                         fi.faceImage = theImage;
                     });
                 fi.hasAlpha = false;
-                epg.primaryExtendePrim.faces.Add(0, fi);
+                epg.primaryExtendePrim.faces.Add(fi.num, fi);
             }
 
             EntityGroup eg = new EntityGroup();
@@ -627,7 +634,7 @@ namespace org.herbal3d.BasilOS {
                     // Translate all the new vertices to world coordinates then subtract the 'newEp' location.
                     // All rotation is removed to make computation simplier
 
-                    OMV.Vector3 worldPos = m_regionCenter;
+                    OMV.Vector3 worldPos = OMV.Vector3.Zero;
                     OMV.Quaternion worldRot = OMV.Quaternion.Identity;
                     if (ep.fromOS.SOP != null) {
                         worldPos = ep.fromOS.SOP.GetWorldPosition();
@@ -725,34 +732,16 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Build the GLTF structures from the reorganized scene
-        private Gltf ConvertReorgSceneToGltf(ReorganizedScene reorgScene) {
+        // private Gltf ConvertReorgSceneToGltf(ReorganizedScene reorgScene) {
+        private Gltf ConvertReorgSceneToGltf(EntityGroupList groupsToConvert, string sceneName) {
             Gltf gltf = new Gltf(m_log);
 
-            GltfScene gScene = new GltfScene(gltf, reorgScene.regionID);
-            gScene.name = reorgScene.regionID;
-
-            // For each of the entities, create a gltfNode for the root and then add the linkset prims as the children
-            reorgScene.nonStaticEntities.ForEach(eg => {
-                // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding non-static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
-                AddNodeToGltf(gltf, gScene, eg);
-            });
+            GltfScene gScene = new GltfScene(gltf, sceneName);
 
             try {
-                if (m_params.SimplifyScene) {
-                    // The rebuilt static entities are added next
-                    reorgScene.rebuiltFaceEntities.ForEach(eg => {
-                        // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. adding rebuilt node. id={1}",
-                        //             LogHeader, eg.First().primaryExtendePrim.ID);
-                        AddNodeToGltf(gltf, gScene, eg);
-                    });
-                }
-                else {
-                    // If the scene was not rebuilt, just output the static entities
-                    reorgScene.staticEntities.ForEach(eg => {
-                        // m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Adding static node to Gltf: {1}", LogHeader, eg.SOG.UUID);
-                        AddNodeToGltf(gltf, gScene, eg);
-                    });
-                }
+                groupsToConvert.ForEach(eg => {
+                    AddNodeToGltf(gltf, gScene, eg);
+                });
             }
             catch (Exception e) {
                 m_log.ErrorFormat("{0} ConvertReorgSceneToGltf: exception converting node: {1}", LogHeader, e);

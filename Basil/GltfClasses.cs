@@ -301,14 +301,14 @@ namespace org.herbal3d.BasilOS {
                     GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
                     ext.technique = "BLINN";  // 'LAMBERT' or 'BLINN' or 'PHONG'
 
-                    OMV.Color4 aColor = mesh.faceInfo.textureEntry.RGBA;
-                    ext.values.Add(GltfExtension.valAmbient, aColor);
-                    ext.values.Add(GltfExtension.valDiffuse, aColor);
-                    ext.values.Add(GltfExtension.valEmission, new OMV.Color4(0,0,0,1));
-                    // ext.values.Add(GltfExtension.valEmission, new OMV.Color4(0.05f, 0.05f, 0.05f, 1.0f));
-                    ext.values.Add(GltfExtension.valSpecular, new OMV.Color4(0,0,0,1)); // not a value in LAMBERT
-                    if (aColor.A != 1.0f) {
-                        ext.values.Add(GltfExtension.valTransparency, aColor.A);
+                    OMV.Color4 surfaceColor = mesh.faceInfo.textureEntry.RGBA;
+                    OMV.Color4 aColor = OMV.Color4.Black;
+
+                    ext.values.Add(GltfExtension.valDiffuse, surfaceColor);
+                    // ext.values.Add(GltfExtension.valEmission, aColor);
+                    // ext.values.Add(GltfExtension.valSpecular, aColor); // not a value in LAMBERT
+                    if (surfaceColor.A != 1.0f) {
+                        ext.values.Add(GltfExtension.valTransparency, surfaceColor.A);
                     }
                     
                     if (mesh.faceInfo.textureID != null) {
@@ -415,7 +415,7 @@ namespace org.herbal3d.BasilOS {
             int sizeofVertices = vertexCollection.Count * sizeof(float) * 8;
             int sizeofOneIndices = sizeof(ushort);
             int sizeofIndices = numIndices * sizeofOneIndices;
-            // The offsets must be multiples of a good access unit so thing align
+            // The offsets must be multiples of a good access unit so pad to a good alignment
             int padUnit = sizeof(float) * 8;
             int paddedSizeofIndices = sizeofIndices;
             // There might be padding for each mesh. An over estimate but hopefully not too bad.
@@ -527,7 +527,7 @@ namespace org.herbal3d.BasilOS {
                     umin.X = Math.Min(umin.X, vert.TexCoord.X);
                     umin.Y = Math.Min(umin.Y, vert.TexCoord.Y);
                     umax.X = Math.Max(umax.X, vert.TexCoord.X);
-                    umin.Y = Math.Min(umin.Y, vert.TexCoord.Y);
+                    umax.Y = Math.Max(umax.Y, vert.TexCoord.Y);
                 });
 
                 GltfAccessor vertexAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accCVer");
@@ -752,6 +752,7 @@ namespace org.herbal3d.BasilOS {
 
         public GltfScene(Gltf pRoot, string pID) : base(pRoot, pID) {
             nodes = new GltfNodes(gltfRoot);
+            name = pID;
             gltfRoot.scenes.Add(this);
         }
 
@@ -830,7 +831,7 @@ namespace org.herbal3d.BasilOS {
             else {
                 Gltf.WriteJSONValueLine(outt, level, ref first, "translation", translation);
                 Gltf.WriteJSONValueLine(outt, level, ref first, "scale", scale);
-                Gltf.WriteJSONValueLine(outt, level, ref first, "rotation", rotation);
+                Gltf.WriteJSONValueLine(outt, level, ref first, "rotation", OMV.Quaternion.Normalize(rotation));
             }
             Gltf.WriteJSONLineEnding(outt, ref first);
             outt.Write(GltfClass.Indent(level) + "\"children\": ");
@@ -1040,7 +1041,9 @@ namespace org.herbal3d.BasilOS {
             Gltf.WriteJSONValueLine(outt, level, ref first, "type", type);
             Gltf.WriteJSONValueLine(outt, level, ref first, "byteOffset", byteOffset);
             Gltf.WriteJSONValueLine(outt, level, ref first, "byteStride", byteStride);
-            Gltf.WriteJSONValueLine(outt, level, ref first, "min", min);
+            if (min != null && min.Length > 0)
+                Gltf.WriteJSONValueLine(outt, level, ref first, "min", min);
+            if (max != null && max.Length > 0)
             Gltf.WriteJSONValueLine(outt, level, ref first, "max", max);
             outt.Write("\n" + GltfClass.Indent(level) + "}\n");
         }
