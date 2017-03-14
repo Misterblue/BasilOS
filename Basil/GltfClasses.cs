@@ -270,11 +270,9 @@ namespace org.herbal3d.BasilOS {
         public void BuildAccessorsAndBuffers(MakeAssetURI makeAssetURI, BasilParams pParams) {
             
             // Scan all the meshes and build the materials from the face texture information
-            m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Calling gltf.BuildPrimitives", LogHeader);
             BuildPrimitives(makeAssetURI);
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
-            m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Calling gltf.BuildBuffers", LogHeader);
             BuildBuffers(makeAssetURI, pParams.VerticesMaxForBuffer);
         }
 
@@ -389,9 +387,9 @@ namespace org.herbal3d.BasilOS {
                     }
                 });
             });
-            m_log.DebugFormat("{0} BuildBuffers: total meshes = {1}", LogHeader, numMeshes);
-            m_log.DebugFormat("{0} BuildBuffers: total vertices = {1}", LogHeader, numVerts);
-            m_log.DebugFormat("{0} BuildBuffers: total unique vertices = {1}", LogHeader, vertInd);
+            // m_log.DebugFormat("{0} BuildBuffers: total meshes = {1}", LogHeader, numMeshes);
+            // m_log.DebugFormat("{0} BuildBuffers: total vertices = {1}", LogHeader, numVerts);
+            // m_log.DebugFormat("{0} BuildBuffers: total unique vertices = {1}", LogHeader, vertInd);
 
             // Remap all the indices to the new, compacted vertex collection.
             //     mesh.underlyingMesh.face to mesh.newIndices
