@@ -187,12 +187,6 @@ namespace org.herbal3d.BasilOS {
 
                                 // Scene objects in reorgScene.nonStaticEntities and reorgScene.staticEntities
 
-                                // Scan all the entities and extract statistics
-                                if (m_params.LogConversionStats) {
-                                    stats.ExtractStatistics(reorgScene);
-                                    stats.LogAll(LogHeader);
-                                }
-
                                 // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
                                 //     by repositioning the vertices in the shared meshes so they act as one mesh
                                 if (m_params.SimplifyScene) {
@@ -206,6 +200,12 @@ namespace org.herbal3d.BasilOS {
                                 else {
                                     // if we're not rebuilding the scene, the static entries are what's used
                                     reorgScene.rebuiltFaceEntities = reorgScene.staticEntities;
+                                }
+
+                                // Scan all the entities and extract statistics
+                                if (m_params.LogConversionStats) {
+                                    stats.ExtractStatistics(reorgScene);
+                                    stats.LogAll(LogHeader);
                                 }
 
                                 // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities

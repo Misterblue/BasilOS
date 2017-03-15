@@ -405,7 +405,6 @@ namespace org.herbal3d.BasilOS {
                 mesh.newIndices = newIndices;
                 numIndices += newIndices.Length;
             });
-            m_log.DebugFormat("{0} BuildBuffers: total indices = {1}", LogHeader, numIndices);
 
             // The vertices have been unique'ified into 'vertexCollection' and each mesh has
             //    updated indices in GltfMesh.newIndices.
@@ -442,9 +441,6 @@ namespace org.herbal3d.BasilOS {
             binVerticesView.byteOffset = paddedSizeofIndices;
             binVerticesView.byteLength = sizeofVertices;
             binVerticesView.target = WebGLConstants.ARRAY_BUFFER;
-            m_log.DebugFormat("{0} BuildBuffers: indOffset={1}, indLen={2}, verOff={3}, verLen={4}", LogHeader,
-                        binIndicesView.byteOffset, binIndicesView.byteLength,
-                        binVerticesView.byteOffset, binVerticesView.byteLength);
 
             // Copy the vertices into the output binary buffer 
             // Buffer.BlockCopy only moves primitives. Copy the vertices into a float array.

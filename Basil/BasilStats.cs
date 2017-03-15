@@ -26,18 +26,13 @@ using OMV = OpenMetaverse;
 namespace org.herbal3d.BasilOS {
     public class BasilStats : IDisposable {
 
-        public int numEntities = 0;
-        public int numStaticEntities = 0;
-        public int numPrims = 0;
+        public int numSimplePrims = 0;
+        public int numMeshAssets = 0;
         public int numSculpties = 0;
-        public int numMeshes = 0;
-        public int numLinksets = 0;
-        public int numStaticLinksets = 0;
-        public int numFaces = 0;
-        public int numNullTexturedFaces = 0;
-        public int numMaterials = 0;
 
-        public List<OMV.UUID> textureIDs = new List<OMV.UUID>();
+        EntityGroupStats staticStats = null;
+        EntityGroupStats nonStaticStats = null;
+        EntityGroupStats rebuiltStats = null;
 
         public Scene m_scene;
         public ILog m_log;
@@ -46,82 +41,90 @@ namespace org.herbal3d.BasilOS {
         public BasilStats(Scene pScene, ILog pLog) {
             m_scene = pScene;
             m_log = pLog;
-            textureIDs = new List<OMV.UUID>();
         }
 
         // Gather statistics
         public void ExtractStatistics(BasilModule.ReorganizedScene reorgScene) {
-            Dictionary<int, OMV.Primitive.TextureEntryFace> faceMaterials;
-            faceMaterials = new Dictionary<int, OpenMetaverse.Primitive.TextureEntryFace>();
+            staticStats = StatsFromEntityGroupList("static", reorgScene.staticEntities);
+            nonStaticStats = StatsFromEntityGroupList("nonStatic", reorgScene.nonStaticEntities);
+            rebuiltStats = StatsFromEntityGroupList("rebuilt", reorgScene.rebuiltFaceEntities);
+        }
 
-            EntityGroupList allEntities = new EntityGroupList(reorgScene.staticEntities);
-            allEntities.AddRange(reorgScene.nonStaticEntities);
+        public class EntityGroupStats {
+            public int numEntities = 0;
+            public int numMeshes = 0;
+            public int numLinksets = 0;
+            public int numIndices = 0;
+            public int numVertices = 0;
+            public int numMaterials = 0;
+            public int numTextures = 0;
+        }
 
-            numEntities = allEntities.Count;
-            numStaticEntities = reorgScene.staticEntities.Count;
-
-            numLinksets = 0;
-            reorgScene.nonStaticEntities.ForEach(eGroup => {
-                if (eGroup.Count > 1) {
-                    // if the entity is made of multiple pieces, they are a linkset
-                    numLinksets++;
-                }
-            });
-            numStaticLinksets = 0;
-            reorgScene.staticEntities.ForEach(eGroup => {
-                if (eGroup.Count > 1) {
-                    numStaticLinksets++;
-                }
-            });
-            numLinksets += numStaticLinksets;
-
-            numFaces = 0;
-            allEntities.ForEachExtendedPrim(ep => {
-                // Count total prim faces
-                numFaces += ep.faces.Count;
-
-                try {
-                    foreach (var faceInfo in ep.faces.Values) {
-                        OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
-                        if (ep.fromOS.primitive != null && tef == ep.fromOS.primitive.Textures.DefaultTexture) {
-                            numNullTexturedFaces++;
-                        }
-                        // Compute number of unique materials
-                        int hashCode = tef.GetHashCode();
-                        if (!faceMaterials.ContainsKey(hashCode)) {
-                            faceMaterials.Add(hashCode, tef);
-                        }
-
-                        if (faceInfo.textureID != null) {
-                            OMV.UUID textureID = (OMV.UUID)faceInfo.textureID;
-                            if (!textureIDs.Contains(textureID)) {
-                                textureIDs.Add(textureID);
+        public EntityGroupStats StatsFromEntityGroupList(string listName, EntityGroupList entityList) {
+            EntityGroupStats egs = new EntityGroupStats();
+            try {
+                List<OMV.Primitive.TextureEntryFace> TEFs = new List<OMV.Primitive.TextureEntryFace>();
+                List<OMV.UUID> TEXs = new List<OMV.UUID>();
+                egs.numEntities = entityList.Count;
+                entityList.ForEach(entity => {
+                    if (entity.Count > 1) {
+                        egs.numLinksets++;
+                    }
+                    entity.ForEach(epg => {
+                        var ep = epg.primaryExtendePrim;
+                        egs.numMeshes += ep.faces.Count;
+                        foreach (FaceInfo fi in ep.faces.Values) {
+                            egs.numIndices += fi.indices.Count;
+                            egs.numVertices += fi.vertexs.Count;
+                            if (!TEFs.Contains(fi.textureEntry)) {
+                                TEFs.Add(fi.textureEntry);
+                            }
+                            if (fi.textureID != null && !TEXs.Contains((OMV.UUID)fi.textureID)) {
+                                TEXs.Add((OMV.UUID)fi.textureID);
                             }
                         }
-                    }
-                }
-                catch (Exception e) {
-                    m_log.ErrorFormat("{0} Exception counting textures: {1}", LogHeader, e);
-                }
-            });
+                    });
+                });
+                egs.numMaterials = TEFs.Count;
+                egs.numTextures = TEXs.Count;
+            }
+            catch (Exception e) {
+                m_log.ErrorFormat("{0}: Exception computing {1} stats: {2}", "StatsFromEntityGroupList", listName, e);
+            }
 
-            numMaterials = faceMaterials.Count;
+            return egs;
         }
 
 
+        // Output the non entitiy list info
+        public void Log(string header) {
+            m_log.InfoFormat("{0} numSimplePrims={1}", header, numSimplePrims);
+            m_log.InfoFormat("{0} numSculpties={1}", header, numSculpties);
+            m_log.InfoFormat("{0} numMeshAssets={1}", header, numMeshAssets);
+        }
+
+        public void Log(EntityGroupStats stats, string header) {
+            m_log.InfoFormat("{0} numEntities={1}", header, stats.numEntities);
+            m_log.InfoFormat("{0} numMeshes={1}", header, stats.numMeshes);
+            m_log.InfoFormat("{0} numLinksets={1}", header, stats.numLinksets);
+            m_log.InfoFormat("{0} numIndices={1}", header, stats.numIndices);
+            m_log.InfoFormat("{0} numVertices={1}", header, stats.numVertices);
+            m_log.InfoFormat("{0} numMaterials={1}", header, stats.numMaterials);
+            m_log.InfoFormat("{0} numTextures={1}", header, stats.numTextures);
+        }
+
         public void LogAll(string header) {
-            m_log.InfoFormat("{0} ", header);
-            m_log.InfoFormat("{0} {1} numEntities={2}", header, m_scene.Name, this.numEntities);
-            m_log.InfoFormat("{0} {1} numStaticEntities={2}", header, m_scene.Name, this.numStaticEntities);
-            m_log.InfoFormat("{0} {1} numLinksets={2}", header, m_scene.Name, this.numLinksets);
-            m_log.InfoFormat("{0} {1} numStaticLinksets={2}", header, m_scene.Name, this.numStaticLinksets);
-            m_log.InfoFormat("{0} {1} numPrims={2}", header, m_scene.Name, this.numPrims);
-            m_log.InfoFormat("{0} {1} numSculpties={2}", header, m_scene.Name, this.numSculpties);
-            m_log.InfoFormat("{0} {1} numMeshes={2}", header, m_scene.Name, this.numMeshes);
-            m_log.InfoFormat("{0} {1} numFaces={2}", header, m_scene.Name, this.numFaces);
-            m_log.InfoFormat("{0} {1} num unique materials={2}", header, m_scene.Name, this.numMaterials);
-            m_log.InfoFormat("{0} {1} num null textured faces={2}", header, m_scene.Name, this.numNullTexturedFaces);
-            m_log.InfoFormat("{0} {1} num unique texture IDs={2}", header, m_scene.Name, this.textureIDs.Count);
+            Log(header + " " + m_scene.Name);
+
+            if (staticStats != null) {
+                Log(staticStats, header + " " + m_scene.Name + " static");
+            }
+            if (nonStaticStats != null) {
+                Log(nonStaticStats, header + " " + m_scene.Name + " nonStatic");
+            }
+            if (rebuiltStats != null) {
+                Log(rebuiltStats, header + " " + m_scene.Name + " rebuilt");
+            }
         }
 
         #region IDisposable Support
@@ -130,8 +133,6 @@ namespace org.herbal3d.BasilOS {
         protected virtual void Dispose(bool disposing) {
             if (!disposedValue) {
                 if (disposing) {
-                    textureIDs.Clear();
-                    textureIDs = null;
                 }
                 disposedValue = true;
             }

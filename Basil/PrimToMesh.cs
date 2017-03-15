@@ -57,7 +57,7 @@ namespace org.herbal3d.BasilOS {
                 if (prim.Sculpt != null) {
                     if (prim.Sculpt.Type == OMV.SculptType.Mesh) {
                         // m_log.DebugFormat("{0}: CreateMeshResource: creating mesh", LogHeader);
-                        stats.numMeshes++;
+                        stats.numMeshAssets++;
                         MeshFromPrimMeshData(sog, sop, prim, assetFetcher, lod)
                             .Catch(e => {
                                 prom.Reject(e);
@@ -80,7 +80,7 @@ namespace org.herbal3d.BasilOS {
                 }
                 else {
                     // m_log.DebugFormat("{0}: CreateMeshResource: creating primshape", LogHeader);
-                    stats.numPrims++;
+                    stats.numSimplePrims++;
                     mesh = MeshFromPrimShapeData(sog, sop, prim, lod);
                     prom.Resolve(mesh);
                 }
