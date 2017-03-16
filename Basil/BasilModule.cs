@@ -141,8 +141,8 @@ namespace org.herbal3d.BasilOS {
             public string regionID;
             public EntityGroupList nonStaticEntities = new EntityGroupList();
             public EntityGroupList staticEntities = new EntityGroupList();
-            public SimilarFaces similarFaces = new SimilarFaces();
             public EntityGroupList rebuiltFaceEntities = new EntityGroupList();
+            public EntityGroupList rebuiltNonStaticEntities = new EntityGroupList();
 
             public ReorganizedScene(string pRegionID) {
                 regionID = pRegionID;
@@ -151,8 +151,8 @@ namespace org.herbal3d.BasilOS {
             public void Dispose() {
                 nonStaticEntities.Clear();
                 staticEntities.Clear();
-                similarFaces.Clear();
                 rebuiltFaceEntities.Clear();
+                rebuiltNonStaticEntities.Clear();
             }
         }
 
@@ -191,10 +191,23 @@ namespace org.herbal3d.BasilOS {
                                 //     by repositioning the vertices in the shared meshes so they act as one mesh
                                 if (m_params.SimplifyScene) {
                                     try {
-                                        reorgScene.rebuiltFaceEntities = ConvertSharedFacesIntoMeshes(reorgScene);
+                                        reorgScene.rebuiltFaceEntities = ConvertEntitiesIntoSharedMaterialMeshes(reorgScene.staticEntities);
                                     }
                                     catch (Exception e) {
-                                        m_log.ErrorFormat("{0} Exception calling ConvertSharedFacesIntoMeshes: {1}", LogHeader, e);
+                                        m_log.ErrorFormat("{0} Exception calling ConvertEntitiesIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                    }
+                                    try {
+                                        // Repack all the non-static entities
+                                        // The non-static entities are packaged so they can move as a group.
+                                        // This means the similar faces are only checked within the entity rather than across the region.
+                                        reorgScene.rebuiltNonStaticEntities = new EntityGroupList(
+                                            reorgScene.nonStaticEntities.Select(eg => {
+                                                return ConvertEntityGroupIntoSharedMaterialMeshes(eg);
+                                            }).ToList()
+                                        );
+                                    }
+                                    catch (Exception e) {
+                                        m_log.ErrorFormat("{0} Exception calling ConvertEntityGroupIntoSharedMaterialMeshes: {1}", LogHeader, e);
                                     }
                                 }
                                 else {
@@ -214,8 +227,8 @@ namespace org.herbal3d.BasilOS {
                                 Gltf gltf = null;
                                 try {
                                     // gltf = ConvertReorgSceneToGltf(reorgScene);
-                                    var groupsToConvert = new EntityGroupList(reorgScene.nonStaticEntities);
-                                    groupsToConvert.AddRange(reorgScene.rebuiltFaceEntities);
+                                    var groupsToConvert = new EntityGroupList(reorgScene.rebuiltFaceEntities);
+                                    groupsToConvert.AddRange(reorgScene.rebuiltNonStaticEntities);
                                     gltf = ConvertReorgSceneToGltf(groupsToConvert, reorgScene.regionID);
                                 }
                                 catch (Exception e) {
@@ -532,22 +545,6 @@ namespace org.herbal3d.BasilOS {
                     reorgScene.nonStaticEntities.Add(eGroup);
                 }
             });
-            m_log.DebugFormat("{0} {1} CHECK: num dynamic entities={2}", LogHeader, m_scene.Name, reorgScene.nonStaticEntities.Count);
-            m_log.DebugFormat("{0} {1} CHECK: num static entities={2}", LogHeader, m_scene.Name, reorgScene.staticEntities.Count);
-
-            if (m_params.SimplifyScene) {
-                // Go through all the static items and make a list of all the meshes with similar textures
-                // Transform reorgScene.staticEntities into reorgScene.similarFaces
-                reorgScene.staticEntities.ForEachExtendedPrim(ep => {
-                    foreach (FaceInfo faceInfo in ep.faces.Values) {
-                        OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
-                        int hashCode = tef.GetHashCode();
-                        reorgScene.similarFaces.AddSimilarFace(hashCode, faceInfo);
-                    }
-                });
-                m_log.DebugFormat("{0} {1} Simplify scene. mesh before={2}, after={3}",
-                                    LogHeader, m_scene.Name, reorgScene.staticEntities.Count, reorgScene.similarFaces.Count);
-            }
 
             return reorgScene;
         }
@@ -573,120 +570,182 @@ namespace org.herbal3d.BasilOS {
         // We find the root face by looking for one "in the middle"ish so as to keep the offset
         //    math as small as possible.
         // This creates reorgScene.rebuildFaceEntities from reorgScene.similarFaces.
-        private EntityGroupList ConvertSharedFacesIntoMeshes(ReorganizedScene reorgScene) {
+        private EntityGroupList ConvertEntitiesIntoSharedMaterialMeshes(EntityGroupList staticEntities) {
 
-            EntityGroupList rebuilt = new EntityGroupList();
-
-            foreach( var similarFaceKvp in reorgScene.similarFaces) {
-                // 'similarFaceList' a list of faces that use one particular face material
-                var similarFaceList = similarFaceKvp.Value;
-
-                // Loop through the faces and find the 'middle one'
-                FaceInfo rootFace = null;
-                // similar.ForEach(oneSimilarFace => {
-                // });
-                // for the moment, just select the first one.
-                // If coordinate jitter becomes a problem, fix this code to find the middle one.
-                rootFace = similarFaceList.First();
-                ExtendedPrim rootEp = rootFace.containingPrim;
-
-                // Create the new combined object
-                ExtendedPrim newEp = new ExtendedPrim(rootEp);
-                newEp.ID = OMV.UUID.Random();
-                newEp.coordSystem = rootEp.coordSystem;
-                newEp.isRoot = true;
-                newEp.positionIsParentRelative = false;
-
-                // The merged mesh is located at the root's location with no rotation
-                if (rootEp.fromOS.SOP != null) {
-                    newEp.translation = rootEp.fromOS.SOP.GetWorldPosition();
+            // Go through all the static items and make a list of all the meshes with similar textures
+            SimilarFaces similarFaces = new SimilarFaces();
+            staticEntities.ForEachExtendedPrim(ep => {
+                foreach (FaceInfo faceInfo in ep.faces.Values) {
+                    OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
+                    int hashCode = tef.GetHashCode();
+                    similarFaces.AddSimilarFace(hashCode, faceInfo) ;
                 }
-                else {
-                    newEp.translation = OMV.Vector3.Zero;
-                }
-                newEp.rotation = OMV.Quaternion.Identity;
+            });
 
-                newEp.scale = rootEp.scale;
-
-                // The 'new ExtendedPrim' above copied the faceted mesh faces. We're doing it over so undo that.
-                newEp.faces.Clear();
-                FaceInfo newFace = new FaceInfo(999, rootEp);
-                newFace.textureEntry = rootFace.textureEntry;
-                newFace.textureID = rootFace.textureID;
-                newFace.faceImage = rootFace.faceImage;
-                newFace.hasAlpha = rootFace.hasAlpha;
-                newEp.faces.Add(newFace.num, newFace);
-
-                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
-                //             LogHeader, newEp.translation, newEp.rotation);
-
-                // Based of the root face, create a new mesh that holds all the faces
-                similarFaceList.ForEach(faceInfo => {
-                    // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: adding {1} h={2}, verts={3}, ind={4}",
-                    //                 LogHeader, faceInfo.containingPrim.ID,
-                    //                 similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
-                    // 'faceInfo' and 'ep' is the vertex/indices we're adding to 'newFace'
-                    ExtendedPrim ep = faceInfo.containingPrim;
-                    // The indices of the mesh being added needs to be advanced 'indicesBase' since the vertices are
-                    //     added to the end of the existing list.
-                    int indicesBase = newFace.vertexs.Count;
-
-                    // Translate all the new vertices to world coordinates then subtract the 'newEp' location.
-                    // All rotation is removed to make computation simplier
-
-                    OMV.Vector3 worldPos = OMV.Vector3.Zero;
-                    OMV.Quaternion worldRot = OMV.Quaternion.Identity;
-                    if (ep.fromOS.SOP != null) {
-                        worldPos = ep.fromOS.SOP.GetWorldPosition();
-                        worldRot = ep.fromOS.SOP.GetWorldRotation();
-                    }
-                    // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
-                    //                 LogHeader, faceInfo.containingPrim.ID, worldPos, worldRot);
-                    newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
-                        OMVR.Vertex newVert = new OMVR.Vertex();
-                        var worldLocationOfVertex = vert.Position * worldRot + worldPos;
-                        newVert.Position = worldLocationOfVertex - newEp.translation;
-                        newVert.Normal = vert.Normal * worldRot;
-                        newVert.TexCoord = vert.TexCoord;
-                        return newVert;
-                    }));
-                    newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
-
-                    /* Old code kept for reference. Remove when above is working
-                    if (faceInfo == rootFace) {
-                        // The vertices for the root face don't need translation.
-                        newFace.vertexs.AddRange(faceInfo.vertexs);
-                    }
-                    else {
-                        // Any other vertex must be moved to be world coords relative to new root
-                        OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
-                        OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
-                        OMV.Quaternion invWorldRot = OMV.Quaternion.Inverse(worldRot);
-                        OMV.Quaternion rotrot = invWorldRot * newEp.rotation;
-                        m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
-                                    LogHeader, worldPos, worldRot);
-                        newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
-                            OMVR.Vertex newVert = new OMVR.Vertex();
-                            newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
-                            newVert.Normal = vert.Normal * rotrot;
-                            newVert.TexCoord = vert.TexCoord;
-                            m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
-                                            LogHeader, vert.Position, newVert.Position );
-                            return newVert;
-                        }));
-                    }
-                    END of old code */
-
-                    newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
-                });
-                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
-                //             LogHeader, similarFaceKvp.Key, newFace.vertexs.Count, newFace.indices.Count);
-                EntityGroup eg = new EntityGroup();
-                eg.Add(new ExtendedPrimGroup(newEp));
-                rebuilt.AddUniqueEntity(eg);
-            }
+            EntityGroupList rebuilt = new EntityGroupList(
+                similarFaces.Values.Select(similarFaceList => {
+                    var ep = CreateExtendedPrimFromSimilarFaces(similarFaceList);
+                    // The created ExtendedPrim needs to be packaged into an EntityGroup
+                    var eg = new EntityGroup();
+                    eg.Add(new ExtendedPrimGroup(ep));
+                    return eg;
+                }).ToList()
+            );
 
             return rebuilt;
+        }
+
+        // Check all the faces in an EntityGroup (usually a single SL entity) and
+        //    merge faces using the same material into single meshes.
+        // This reduces large linksets into smaller sets of meshes and also merges
+        //    similar prim faces into single meshes.
+        private EntityGroup ConvertEntityGroupIntoSharedMaterialMeshes(EntityGroup eg) {
+            if (eg.Count == 1 && eg.First().primaryExtendePrim.faces.Count == 1) {
+                // if there is only one entity and that entity has only one mesh, just return
+                //     the thing passed.
+                m_log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: only one face in one entity.", LogHeader);
+                return eg;
+            }
+
+            // Go through all the materialed meshes and see if there are meshes to share
+            SimilarFaces similarFaces = new SimilarFaces();
+            eg.ForEach(epg => {
+                ExtendedPrim ep = epg.primaryExtendePrim;
+                foreach (FaceInfo faceInfo in ep.faces.Values) {
+                    OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
+                    int hashCode = tef.GetHashCode();
+                    similarFaces.AddSimilarFace(hashCode, faceInfo);
+                }
+            });
+
+            EntityGroup rebuilt = new EntityGroup(
+                similarFaces.Values.Select(similarFaceList => {
+                    return new ExtendedPrimGroup(CreateExtendedPrimFromSimilarFaces(similarFaceList));
+                }).ToList()
+            );
+
+            return rebuilt;
+        }
+
+        // Given a list of faces, merge the meshes into a single mesh.
+        // The returned ExtendedPrim has a location in the world and all the mesh vertices
+        //    have been moved and oriented to that new location.
+        private ExtendedPrim CreateExtendedPrimFromSimilarFaces(List<FaceInfo> similarFaceList) {
+            // Loop through the faces and find the root. If this is faces from a single linkset, this
+            //    will find the root prim as  the reference. Otherwise it will just find some root
+            //    prim.
+            // There might be a need to find the 'middle' prim of a cluster if position jitter
+            //    becomes a problem.
+            FaceInfo rootFace = null;
+            foreach (FaceInfo faceInfo in similarFaceList) {
+                if (faceInfo.containingPrim != null && faceInfo.containingPrim.isRoot) {
+                    rootFace = faceInfo;
+                    break;
+                }
+            }
+            if (rootFace == null) {
+                // If there wasn't a root entity in the list, just pick a random one
+                rootFace = similarFaceList.First();
+            }
+            ExtendedPrim rootEp = rootFace.containingPrim;
+
+            // Create the new combined object
+            ExtendedPrim newEp = new ExtendedPrim(rootEp);
+            newEp.ID = OMV.UUID.Random();
+            newEp.coordSystem = rootEp.coordSystem;
+            newEp.isRoot = true;
+            newEp.positionIsParentRelative = false;
+
+            // The merged mesh is located at the root's location with no rotation
+            if (rootEp.fromOS.SOP != null) {
+                newEp.translation = rootEp.fromOS.SOP.GetWorldPosition();
+            }
+            else {
+                newEp.translation = OMV.Vector3.Zero;
+            }
+            newEp.rotation = OMV.Quaternion.Identity;
+
+            newEp.scale = rootEp.scale;
+
+            // The 'new ExtendedPrim' above copied the faceted mesh faces. We're doing it over so undo that.
+            newEp.faces.Clear();
+            FaceInfo newFace = new FaceInfo(999, rootEp);
+            newFace.textureEntry = rootFace.textureEntry;
+            newFace.textureID = rootFace.textureID;
+            newFace.faceImage = rootFace.faceImage;
+            newFace.hasAlpha = rootFace.hasAlpha;
+            newEp.faces.Add(newFace.num, newFace);
+
+            // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
+            //             LogHeader, newEp.translation, newEp.rotation);
+
+            // Based of the root face, create a new mesh that holds all the faces
+            similarFaceList.ForEach(faceInfo => {
+                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: adding {1} h={2}, verts={3}, ind={4}",
+                //                 LogHeader, faceInfo.containingPrim.ID,
+                //                 similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
+                // 'faceInfo' and 'ep' is the vertex/indices we're adding to 'newFace'
+                ExtendedPrim ep = faceInfo.containingPrim;
+                // The indices of the mesh being added needs to be advanced 'indicesBase' since the vertices are
+                //     added to the end of the existing list.
+                int indicesBase = newFace.vertexs.Count;
+
+                // Translate all the new vertices to world coordinates then subtract the 'newEp' location.
+                // All rotation is removed to make computation simplier
+
+                OMV.Vector3 worldPos = OMV.Vector3.Zero;
+                OMV.Quaternion worldRot = OMV.Quaternion.Identity;
+                if (ep.fromOS.SOP != null) {
+                    worldPos = ep.fromOS.SOP.GetWorldPosition();
+                    worldRot = ep.fromOS.SOP.GetWorldRotation();
+                }
+                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
+                //                 LogHeader, faceInfo.containingPrim.ID, worldPos, worldRot);
+                newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
+                    OMVR.Vertex newVert = new OMVR.Vertex();
+                    var worldLocationOfVertex = vert.Position * worldRot + worldPos;
+                    newVert.Position = worldLocationOfVertex - newEp.translation;
+                    newVert.Normal = vert.Normal * worldRot;
+                    newVert.TexCoord = vert.TexCoord;
+                    return newVert;
+                }));
+                newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
+
+                /* Old code kept for reference. Remove when above is working
+                if (faceInfo == rootFace) {
+                    // The vertices for the root face don't need translation.
+                    newFace.vertexs.AddRange(faceInfo.vertexs);
+                }
+                else {
+                    // Any other vertex must be moved to be world coords relative to new root
+                    OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
+                    OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
+                    OMV.Quaternion invWorldRot = OMV.Quaternion.Inverse(worldRot);
+                    OMV.Quaternion rotrot = invWorldRot * newEp.rotation;
+                    m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
+                                LogHeader, worldPos, worldRot);
+                    newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
+                        OMVR.Vertex newVert = new OMVR.Vertex();
+                        newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
+                        newVert.Normal = vert.Normal * rotrot;
+                        newVert.TexCoord = vert.TexCoord;
+                        m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
+                                        LogHeader, vert.Position, newVert.Position );
+                        return newVert;
+                    }));
+                }
+                END of old code */
+
+                newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
+            });
+            // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
+            //             LogHeader, similarFaceKvp.Key, newFace.vertexs.Count, newFace.indices.Count);
+            return newEp;
+
+            // EntityGroup eg = new EntityGroup();
+            // eg.Add(new ExtendedPrimGroup(newEp));
+
+            // return eg;
         }
 
         // The building of the Gltf structures found a bunch of images. Write them out.

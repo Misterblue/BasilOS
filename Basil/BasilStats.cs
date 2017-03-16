@@ -33,6 +33,7 @@ namespace org.herbal3d.BasilOS {
         EntityGroupStats staticStats = null;
         EntityGroupStats nonStaticStats = null;
         EntityGroupStats rebuiltStats = null;
+        EntityGroupStats rebuiltNonStaticStats = null;
 
         public Scene m_scene;
         public ILog m_log;
@@ -48,6 +49,7 @@ namespace org.herbal3d.BasilOS {
             staticStats = StatsFromEntityGroupList("static", reorgScene.staticEntities);
             nonStaticStats = StatsFromEntityGroupList("nonStatic", reorgScene.nonStaticEntities);
             rebuiltStats = StatsFromEntityGroupList("rebuilt", reorgScene.rebuiltFaceEntities);
+            rebuiltNonStaticStats = StatsFromEntityGroupList("rebuiltNonStatic", reorgScene.rebuiltNonStaticEntities);
         }
 
         public class EntityGroupStats {
@@ -124,6 +126,9 @@ namespace org.herbal3d.BasilOS {
             }
             if (rebuiltStats != null) {
                 Log(rebuiltStats, header + " " + m_scene.Name + " rebuilt");
+            }
+            if (rebuiltNonStaticStats != null) {
+                Log(rebuiltNonStaticStats, header + " " + m_scene.Name + " rebuiltNonStatic");
             }
         }
 
