@@ -189,13 +189,20 @@ namespace org.herbal3d.BasilOS {
 
                                 // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
                                 //     by repositioning the vertices in the shared meshes so they act as one mesh
-                                if (m_params.SimplifyScene) {
+                                if (m_params.MergeStaticMeshes) {
                                     try {
                                         reorgScene.rebuiltFaceEntities = ConvertEntitiesIntoSharedMaterialMeshes(reorgScene.staticEntities);
                                     }
                                     catch (Exception e) {
                                         m_log.ErrorFormat("{0} Exception calling ConvertEntitiesIntoSharedMaterialMeshes: {1}", LogHeader, e);
                                     }
+                                }
+                                else {
+                                    // if we're not rebuilding the scene, the static entries are what's used
+                                    reorgScene.rebuiltFaceEntities = reorgScene.staticEntities;
+                                }
+
+                                if (m_params.MergeNonStaticMeshes) {
                                     try {
                                         // Repack all the non-static entities
                                         // The non-static entities are packaged so they can move as a group.
@@ -212,7 +219,7 @@ namespace org.herbal3d.BasilOS {
                                 }
                                 else {
                                     // if we're not rebuilding the scene, the static entries are what's used
-                                    reorgScene.rebuiltFaceEntities = reorgScene.staticEntities;
+                                    reorgScene.rebuiltNonStaticEntities = reorgScene.nonStaticEntities;
                                 }
 
                                 // Scan all the entities and extract statistics
