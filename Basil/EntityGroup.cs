@@ -100,6 +100,35 @@ namespace org.herbal3d.BasilOS {
             faceImage = null;       // flag saying if an image is present
             textureID = null;       // flag saying if an image is present
         }
+
+        // TextureEntryFace.GetHashCode() includes all the texture displacement which is
+        //    really already applied to the UV of the mesh.
+        // This is a truncated version of the hash computation in TextureEntryFace.
+        public int GetTextureHash() {
+            int hash = 0;
+            if (textureEntry != null) {
+                hash =
+                 textureEntry.RGBA.GetHashCode() ^
+                 // textureEntry.RepeatU.GetHashCode() ^
+                 // textureEntry.RepeatV.GetHashCode() ^
+                 // textureEntry.OffsetU.GetHashCode() ^
+                 // textureEntry.OffsetV.GetHashCode() ^
+                 // textureEntry.Rotation.GetHashCode() ^
+                 textureEntry.Glow.GetHashCode() ^
+                 textureEntry.Bump.GetHashCode() ^
+                 textureEntry.Shiny.GetHashCode() ^
+                 textureEntry.Fullbright.GetHashCode() ^
+                 textureEntry.MediaFlags.GetHashCode() ^
+                 textureEntry.TexMapType.GetHashCode() ^
+                 textureEntry.TextureID.GetHashCode() ^
+                 textureEntry.MaterialID.GetHashCode();
+            }
+            else {
+                var rnd = new Random();
+                hash = rnd.Next();
+            }
+            return hash;
+        }
     }
 
     // An extended description of an entity that includes the original

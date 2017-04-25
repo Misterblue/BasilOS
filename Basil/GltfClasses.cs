@@ -290,11 +290,14 @@ namespace org.herbal3d.BasilOS {
 
             meshes.ForEach(mesh => {
                 GltfMaterial theMaterial = null;
-                int hash = mesh.faceInfo.textureEntry.GetHashCode();
+                // int hash = mesh.faceInfo.textureEntry.GetHashCode();
+                int hash = mesh.faceInfo.GetTextureHash();
                 if (!gltfRoot.materials.GetHash(hash, out theMaterial)) {
                     // Material has not beeen created yet
                     theMaterial = new GltfMaterial(gltfRoot, mesh.ID + "_mat");
                     theMaterial.hash = hash;
+                    m_log.DebugFormat("{0} Gltf.BuildPrimitives. Creating new material. hash={1}, texture={2}",
+                                    LogHeader, hash, mesh.faceInfo.textureID, theMaterial.name);
 
                     GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
                     ext.technique = "BLINN";  // 'LAMBERT' or 'BLINN' or 'PHONG'
@@ -308,7 +311,7 @@ namespace org.herbal3d.BasilOS {
                     if (surfaceColor.A != 1.0f) {
                         ext.values.Add(GltfExtension.valTransparency, surfaceColor.A);
                     }
-                    
+
                     if (mesh.faceInfo.textureID != null) {
                         // There is an image texture with this mesh.
                         // Create all the structures for an image.
@@ -341,6 +344,9 @@ namespace org.herbal3d.BasilOS {
 
                     theMaterial.extensions.Add(ext);
                 }
+                else {  // BEGIN DEBUG DEBUG
+                    m_log.DebugFormat("{0} Gltf.BuildPrimitives. Reusing material. hash={1}", LogHeader, hash);
+                }   // END DEBUG DEBUG
                 mesh.onePrimitive.material = theMaterial;
             });
         }

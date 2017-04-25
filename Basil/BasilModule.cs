@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Reflection;
 using Mono.Addins;
@@ -462,6 +463,7 @@ namespace org.herbal3d.BasilOS {
             // If the texture includes an image, read it in.
             OMV.UUID texID = faceInfo.textureEntry.TextureID;
             try {
+                faceInfo.hasAlpha = (faceInfo.textureEntry.RGBA.A != 1.0f);
                 if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
                     faceInfo.textureID = texID;
                     CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
@@ -471,8 +473,7 @@ namespace org.herbal3d.BasilOS {
                         })
                         .Then(theImage => {
                             faceInfo.faceImage = theImage;
-                            faceInfo.hasAlpha = false;
-                            if (Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
+                            if (!faceInfo.hasAlpha && Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
                                 // The image could have alpha values in it
                                 Bitmap bitmapImage = theImage as Bitmap;
                                 if (bitmapImage != null) {
@@ -769,9 +770,14 @@ namespace org.herbal3d.BasilOS {
         private void WriteOutImagesForEP(ExtendedPrim ep) {
             foreach (var faceInfo in ep.faces.Values) {
                 if (faceInfo.faceImage != null) {
-                    Image texImage = faceInfo.faceImage;
                     string texFilename = faceInfo.imageFilename;
                     if (!File.Exists(texFilename)) {
+                        Image texImage = faceInfo.faceImage;
+                        if (!faceInfo.hasAlpha) {
+                            // For unknown reasons, the resizer does not handle transparency.
+                            // When that problem is solved, remove this 'if'.
+                            texImage = ConstrainTextureSize(faceInfo.faceImage);
+                        }
                         try {
                             /*
                             using (Bitmap textureBitmap = new Bitmap(texImage.Width, texImage.Height,
@@ -795,6 +801,24 @@ namespace org.herbal3d.BasilOS {
                     }
                 }
             }
+        }
+
+        // If the image is larger than a max, resize the image.
+        // Not sure why, but transparency is lost in this conversion.
+        private Image ConstrainTextureSize(Image inImage) {
+            int size = m_params.MaxTextureSize;
+            if (inImage.Width > size || inImage.Height > size) {
+                Image thumbNail = new Bitmap(size, size, inImage.PixelFormat);
+                using (Graphics g = Graphics.FromImage(thumbNail)) {
+                    g.CompositingQuality = CompositingQuality.HighQuality;
+                    g.SmoothingMode = SmoothingMode.HighQuality;
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    Rectangle rect = new Rectangle(0, 0, size, size);
+                    g.DrawImage(inImage, rect);
+                }
+                return thumbNail;
+            }
+            return inImage;
         }
 
         // Build the GLTF structures from the reorganized scene
