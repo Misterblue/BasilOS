@@ -293,62 +293,69 @@ namespace org.herbal3d.BasilOS {
                 // int hash = mesh.faceInfo.textureEntry.GetHashCode();
                 int hash = mesh.faceInfo.GetTextureHash();
                 if (!gltfRoot.materials.GetHash(hash, out theMaterial)) {
-                    // Material has not beeen created yet
-                    theMaterial = new GltfMaterial(gltfRoot, mesh.ID + "_mat");
-                    theMaterial.hash = hash;
-                    m_log.DebugFormat("{0} Gltf.BuildPrimitives. Creating new material. hash={1}, texture={2}",
-                                    LogHeader, hash, mesh.faceInfo.textureID, theMaterial.name);
-
-                    GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
-                    ext.technique = "BLINN";  // 'LAMBERT' or 'BLINN' or 'PHONG'
-
-                    OMV.Color4 surfaceColor = mesh.faceInfo.textureEntry.RGBA;
-                    OMV.Color4 aColor = OMV.Color4.Black;
-
-                    ext.values.Add(GltfExtension.valDiffuse, surfaceColor);
-                    // ext.values.Add(GltfExtension.valEmission, aColor);
-                    // ext.values.Add(GltfExtension.valSpecular, aColor); // not a value in LAMBERT
-                    if (surfaceColor.A != 1.0f) {
-                        ext.values.Add(GltfExtension.valTransparency, surfaceColor.A);
-                    }
-
-                    if (mesh.faceInfo.textureID != null) {
-                        // There is an image texture with this mesh.
-                        // Create all the structures for an image.
-                        GltfTexture theTexture = null;
-                        OMV.UUID texID = (OMV.UUID)mesh.faceInfo.textureID;
-                        // Look up the texture to see if already created. If not, build texture info.
-                        if (!gltfRoot.textures.GetByUUID(texID, out theTexture)) {
-                            theTexture = new GltfTexture(gltfRoot, texID.ToString() + "_tex");
-                            theTexture.underlyingUUID = texID;
-                            theTexture.target = WebGLConstants.TEXTURE_2D;
-                            theTexture.type = WebGLConstants.UNSIGNED_BYTE;
-                            theTexture.format = WebGLConstants.RGBA;
-                            theTexture.internalFormat = WebGLConstants.RGBA;
-                            theTexture.sampler = defaultSampler;
-                            GltfImage theImage = null;
-                            if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
-                                theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
-                                theImage.underlyingUUID = texID;
-                                makeAssetURI(MakeAssetURITypeImage, texID.ToString(), out theImage.filename, out theImage.uri);
-                            }
-                            theTexture.source = theImage;
-                        }
-                        // Remove the defaults created above and add new values for the texture
-                        ext.values.Remove(GltfExtension.valDiffuse);
-                        ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
-
-                        ext.values.Remove(GltfExtension.valTransparent);
-                        ext.values.Add(GltfExtension.valTransparent, mesh.faceInfo.hasAlpha);
-                    }
-
-                    theMaterial.extensions.Add(ext);
+                    theMaterial = BuildMaterial(mesh, defaultSampler, makeAssetURI);
                 }
-                else {  // BEGIN DEBUG DEBUG
-                    m_log.DebugFormat("{0} Gltf.BuildPrimitives. Reusing material. hash={1}", LogHeader, hash);
-                }   // END DEBUG DEBUG
                 mesh.onePrimitive.material = theMaterial;
             });
+        }
+
+        public GltfMaterial BuildMaterial(GltfMesh mesh, GltfSampler defaultSampler, MakeAssetURI makeAssetURI) {
+            // Material has not beeen created yet
+            GltfMaterial theMaterial = new GltfMaterial(gltfRoot, mesh.ID + "_mat");
+            theMaterial.hash = mesh.faceInfo.GetTextureHash();
+            // m_log.DebugFormat("{0} Gltf.BuildPrimitives. Creating new material. hash={1}, texture={2}",
+            //                 LogHeader, hash, mesh.faceInfo.textureID, theMaterial.name);
+
+            GltfExtension ext = new GltfExtension(gltfRoot, "KHR_materials_common");
+            ext.technique = "BLINN";  // 'LAMBERT' or 'BLINN' or 'PHONG'
+
+            OMV.Color4 surfaceColor = mesh.faceInfo.textureEntry.RGBA;
+            OMV.Color4 aColor = OMV.Color4.Black;
+
+            ext.values.Add(GltfExtension.valDiffuse, surfaceColor);
+            // ext.values.Add(GltfExtension.valEmission, aColor);
+            // ext.values.Add(GltfExtension.valSpecular, aColor); // not a value in LAMBERT
+            if (mesh.faceInfo.textureEntry.Shiny != OMV.Shininess.None) {
+                float shine = (float)mesh.faceInfo.textureEntry.Shiny / 256f;
+                ext.values.Add(GltfExtension.valShininess, shine);
+            }
+            if (surfaceColor.A != 1.0f) {
+                ext.values.Add(GltfExtension.valTransparency, surfaceColor.A);
+            }
+
+            if (mesh.faceInfo.textureID != null) {
+                // There is an image texture with this mesh.
+                // Create all the structures for an image.
+                GltfTexture theTexture = null;
+                OMV.UUID texID = (OMV.UUID)mesh.faceInfo.textureID;
+                // Look up the texture to see if already created. If not, build texture info.
+                if (!gltfRoot.textures.GetByUUID(texID, out theTexture)) {
+                    theTexture = new GltfTexture(gltfRoot, texID.ToString() + "_tex");
+                    theTexture.underlyingUUID = texID;
+                    theTexture.target = WebGLConstants.TEXTURE_2D;
+                    theTexture.type = WebGLConstants.UNSIGNED_BYTE;
+                    theTexture.format = WebGLConstants.RGBA;
+                    theTexture.internalFormat = WebGLConstants.RGBA;
+                    theTexture.sampler = defaultSampler;
+                    GltfImage theImage = null;
+                    if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
+                        theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
+                        theImage.underlyingUUID = texID;
+                        makeAssetURI(MakeAssetURITypeImage, texID.ToString(), out theImage.filename, out theImage.uri);
+                    }
+                    theTexture.source = theImage;
+                }
+                // Remove the defaults created above and add new values for the texture
+                ext.values.Remove(GltfExtension.valDiffuse);
+                ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
+
+                ext.values.Remove(GltfExtension.valTransparent);
+                ext.values.Add(GltfExtension.valTransparent, mesh.faceInfo.hasAlpha);
+            }
+
+            theMaterial.extensions.Add(ext);
+
+            return theMaterial;
         }
 
         // Meshes with FaceInfo's have been added to the scene. Pass over all

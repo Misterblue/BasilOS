@@ -15,6 +15,7 @@
  */
 
 using System;
+using System.Text;
 using System.Collections.Generic;
 
 using log4net;
@@ -22,6 +23,7 @@ using log4net;
 using OpenSim.Region.Framework.Scenes;
 
 using OMV = OpenMetaverse;
+using OMVR = OpenMetaverse.Rendering;
 
 namespace org.herbal3d.BasilOS {
     public class BasilStats : IDisposable {
@@ -75,7 +77,7 @@ namespace org.herbal3d.BasilOS {
                     entity.ForEach(epg => {
                         var ep = epg.primaryExtendePrim;
                         egs.numMeshes += ep.faces.Count;
-                        foreach (FaceInfo fi in ep.faces.Values) {
+                        foreach (FaceInfo fi in ep.faces) {
                             egs.numIndices += fi.indices.Count;
                             egs.numVertices += fi.vertexs.Count;
                             if (!TEFs.Contains(fi.textureEntry)) {
@@ -100,19 +102,19 @@ namespace org.herbal3d.BasilOS {
 
         // Output the non entitiy list info
         public void Log(string header) {
-            m_log.InfoFormat("{0} numSimplePrims={1}", header, numSimplePrims);
-            m_log.InfoFormat("{0} numSculpties={1}", header, numSculpties);
-            m_log.InfoFormat("{0} numMeshAssets={1}", header, numMeshAssets);
+            m_log.DebugFormat("{0} numSimplePrims={1}", header, numSimplePrims);
+            m_log.DebugFormat("{0} numSculpties={1}", header, numSculpties);
+            m_log.DebugFormat("{0} numMeshAssets={1}", header, numMeshAssets);
         }
 
         public void Log(EntityGroupStats stats, string header) {
-            m_log.InfoFormat("{0} numEntities={1}", header, stats.numEntities);
-            m_log.InfoFormat("{0} numMeshes={1}", header, stats.numMeshes);
-            m_log.InfoFormat("{0} numLinksets={1}", header, stats.numLinksets);
-            m_log.InfoFormat("{0} numIndices={1}", header, stats.numIndices);
-            m_log.InfoFormat("{0} numVertices={1}", header, stats.numVertices);
-            m_log.InfoFormat("{0} numMaterials={1}", header, stats.numMaterials);
-            m_log.InfoFormat("{0} numTextures={1}", header, stats.numTextures);
+            m_log.DebugFormat("{0} numEntities={1}", header, stats.numEntities);
+            m_log.DebugFormat("{0} numMeshes={1}", header, stats.numMeshes);
+            m_log.DebugFormat("{0} numLinksets={1}", header, stats.numLinksets);
+            m_log.DebugFormat("{0} numIndices={1}", header, stats.numIndices);
+            m_log.DebugFormat("{0} numVertices={1}", header, stats.numVertices);
+            m_log.DebugFormat("{0} numMaterials={1}", header, stats.numMaterials);
+            m_log.DebugFormat("{0} numTextures={1}", header, stats.numTextures);
         }
 
         public void LogAll(string header) {
@@ -130,6 +132,58 @@ namespace org.herbal3d.BasilOS {
             if (rebuiltNonStaticStats != null) {
                 Log(rebuiltNonStaticStats, header + " " + m_scene.Name + " rebuiltNonStatic");
             }
+        }
+
+        private const int indentStep = 2;
+        private string MI(int indent) { // short for "MakeIndent"
+            return LogHeader + "                                                                                          ".Substring(0, indent * indentStep);
+        }
+        public void DumpDetailed(EntityGroupList egl) {
+            DumpDetailed(1, egl);
+        }
+        public void DumpDetailed(int indent, EntityGroupList egl) {
+            m_log.Debug(MI(indent) + "EntityGroupList. Num entities=" + egl.Count);
+            egl.ForEach(eg => {
+                DumpDetailed(indent+1, eg);
+            });
+        }
+        public void DumpDetailed(int indent, EntityGroup eg) {
+            m_log.Debug(MI(indent) + "EntityGroup. NumExtendedPrims=" + eg.Count);
+            eg.ForEach(epg => {
+                DumpDetailed(indent+1, epg);
+            });
+        }
+        public void DumpDetailed(int indent, ExtendedPrimGroup epg) {
+            m_log.Debug(MI(indent) + "ExtendedPrimGroup");
+            foreach (PrimGroupType lodKey in epg.Keys) {
+                DumpDetailed(indent+1, lodKey, epg[lodKey]);
+            }
+        }
+        public void DumpDetailed(int indent, PrimGroupType lodKey, ExtendedPrim ep) {
+            m_log.Debug(MI(indent) + "LOD=" + lodKey);
+            DumpDetailed(indent+1, ep);
+        }
+        public void DumpDetailed(int indent, ExtendedPrim ep) {
+            var name = ep.fromOS.SOG == null ? "TERRAIN" : ep.fromOS.SOG.Name;
+            m_log.Debug(MI(indent) + "name=" + name);
+            StringBuilder buff = new StringBuilder();
+            buff.Append(MI(indent) + "faces=" + ep.faces.Count);
+            foreach (FaceInfo face in ep.faces) {
+                buff.Append("(");
+                buff.Append(face.vertexs.Count.ToString());
+                buff.Append("/");
+                buff.Append(face.indices.Count.ToString());
+                buff.Append("/");
+                var hash = face.textureEntry == null ? 0 : face.GetTextureHash();
+                buff.Append(hash.ToString());
+                if (face.textureID != null 
+                        && face.textureID != OMV.UUID.Zero
+                        && face.textureID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
+                    buff.Append("T");
+                }
+                buff.Append(") ");
+            }
+            m_log.Debug(buff.ToString());
         }
 
         #region IDisposable Support

@@ -172,7 +172,7 @@ namespace org.herbal3d.BasilOS {
             facetMesh.Faces = new List<OMVR.Face>() { rawMesh };
 
             ExtendedPrim ep = new ExtendedPrim(null, null, null, facetMesh);
-            ep.faces = new Dictionary<int, FaceInfo>();
+            ep.faces = new List<FaceInfo>();
 
             ExtendedPrimGroup epg = new ExtendedPrimGroup(ep);
 
@@ -205,8 +205,7 @@ namespace org.herbal3d.BasilOS {
         // Loop over all the vertices in an ExtendedPrim and perform some operation on them
         public delegate void OperateOnVertex(ref OMVR.Vertex vert);
         public static void OnAllVertex(ExtendedPrim ep, OperateOnVertex vertOp) {
-            foreach (var aFaceKVP in ep.faces) {
-                FaceInfo aFace = aFaceKVP.Value;
+            foreach (FaceInfo aFace in ep.faces) {
                 for (int jj = 0; jj < aFace.vertexs.Count; jj++) {
                     OMVR.Vertex aVert = aFace.vertexs[jj];
                     vertOp(ref aVert);

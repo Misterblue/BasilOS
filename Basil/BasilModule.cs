@@ -178,96 +178,106 @@ namespace org.herbal3d.BasilOS {
 
                     using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log, m_params)) {
 
-                        ConvertEntitiesToMeshes(assetFetcher, stats)
-                            .Then(allSOGs => {
-                                // Everything has been converted into meshes and available in 'allSOGs'.
-                                m_log.InfoFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
+                        try {
 
-                                // Scan the entities and reorganize into static/non-static and find shared face meshes
-                                ReorganizedScene reorgScene = ReorganizeScene(allSOGs, "region_" + m_scene.Name.ToLower());
+                            ConvertEntitiesToMeshes(assetFetcher, stats)
+                                .Catch(e => {
+                                    m_log.ErrorFormat("{0} exception in ConvertEntitiesToMeshes: {1}", LogHeader, e);
+                                })
+                                .Then(allSOGs => {
+                                    // Everything has been converted into meshes and available in 'allSOGs'.
+                                    m_log.DebugFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
+                                    stats.DumpDetailed(allSOGs);
 
-                                // Scene objects in reorgScene.nonStaticEntities and reorgScene.staticEntities
+                                    // Scan the entities and reorganize into static/non-static and find shared face meshes
+                                    ReorganizedScene reorgScene = ReorganizeScene(allSOGs, "region_" + m_scene.Name.ToLower());
 
-                                // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
-                                //     by repositioning the vertices in the shared meshes so they act as one mesh
-                                if (m_params.MergeStaticMeshes) {
+                                    // Scene objects in reorgScene.nonStaticEntities and reorgScene.staticEntities
+
+                                    // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
+                                    //     by repositioning the vertices in the shared meshes so they act as one mesh
+                                    if (m_params.MergeStaticMeshes) {
+                                        try {
+                                            reorgScene.rebuiltFaceEntities = ConvertEntitiesIntoSharedMaterialMeshes(reorgScene.staticEntities);
+                                        }
+                                        catch (Exception e) {
+                                            m_log.ErrorFormat("{0} Exception calling ConvertEntitiesIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                        }
+                                    }
+                                    else {
+                                        // if we're not rebuilding the scene, the static entries are what's used
+                                        reorgScene.rebuiltFaceEntities = reorgScene.staticEntities;
+                                    }
+
+                                    if (m_params.MergeNonStaticMeshes) {
+                                        try {
+                                            // Repack all the non-static entities
+                                            // The non-static entities are packaged so they can move as a group.
+                                            // This means the similar faces are only checked within the entity rather than across the region.
+                                            reorgScene.rebuiltNonStaticEntities = new EntityGroupList(
+                                                    reorgScene.nonStaticEntities.Select(eg => {
+                                                        return ConvertEntityGroupIntoSharedMaterialMeshes(eg);
+                                                    }).ToList()
+                                                );
+                                        }
+                                        catch (Exception e) {
+                                            m_log.ErrorFormat("{0} Exception calling ConvertEntityGroupIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                        }
+                                    }
+                                    else {
+                                        // if we're not rebuilding the scene, the static entries are what's used
+                                        reorgScene.rebuiltNonStaticEntities = reorgScene.nonStaticEntities;
+                                    }
+
+                                    // Scan all the entities and extract statistics
+                                    if (m_params.LogConversionStats) {
+                                        stats.ExtractStatistics(reorgScene);
+                                        stats.LogAll(LogHeader);
+                                    }
+
+                                    // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
+
+                                    // Build the GLTF structures from the reorganized scene
+                                    Gltf gltf = null;
                                     try {
-                                        reorgScene.rebuiltFaceEntities = ConvertEntitiesIntoSharedMaterialMeshes(reorgScene.staticEntities);
+                                        // gltf = ConvertReorgSceneToGltf(reorgScene);
+                                        var groupsToConvert = new EntityGroupList(reorgScene.rebuiltFaceEntities);
+                                        groupsToConvert.AddRange(reorgScene.rebuiltNonStaticEntities);
+                                        gltf = ConvertReorgSceneToGltf(groupsToConvert, reorgScene.regionID);
                                     }
                                     catch (Exception e) {
-                                        m_log.ErrorFormat("{0} Exception calling ConvertEntitiesIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                        m_log.ErrorFormat("{0} Exception calling ConvertReorgSceneToGltf: {1}", LogHeader, e);
                                     }
-                                }
-                                else {
-                                    // if we're not rebuilding the scene, the static entries are what's used
-                                    reorgScene.rebuiltFaceEntities = reorgScene.staticEntities;
-                                }
 
-                                if (m_params.MergeNonStaticMeshes) {
+                                    // Scan through all the textures and convert them into PNGs for the Gltf scene
                                     try {
-                                        // Repack all the non-static entities
-                                        // The non-static entities are packaged so they can move as a group.
-                                        // This means the similar faces are only checked within the entity rather than across the region.
-                                        reorgScene.rebuiltNonStaticEntities = new EntityGroupList(
-                                            reorgScene.nonStaticEntities.Select(eg => {
-                                                return ConvertEntityGroupIntoSharedMaterialMeshes(eg);
-                                            }).ToList()
-                                        );
+                                        if (m_params.ExportTextures) {
+                                            m_log.DebugFormat("{0} exporting textures", LogHeader);
+                                            WriteOutImages(reorgScene);
+                                        }
                                     }
                                     catch (Exception e) {
-                                        m_log.ErrorFormat("{0} Exception calling ConvertEntityGroupIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                        m_log.ErrorFormat("{0} Exception calling WriteOutImages: {1}", LogHeader, e);
                                     }
-                                }
-                                else {
-                                    // if we're not rebuilding the scene, the static entries are what's used
-                                    reorgScene.rebuiltNonStaticEntities = reorgScene.nonStaticEntities;
-                                }
 
-                                // Scan all the entities and extract statistics
-                                if (m_params.LogConversionStats) {
-                                    stats.ExtractStatistics(reorgScene);
-                                    stats.LogAll(LogHeader);
-                                }
-
-                                // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
-
-                                // Build the GLTF structures from the reorganized scene
-                                Gltf gltf = null;
-                                try {
-                                    // gltf = ConvertReorgSceneToGltf(reorgScene);
-                                    var groupsToConvert = new EntityGroupList(reorgScene.rebuiltFaceEntities);
-                                    groupsToConvert.AddRange(reorgScene.rebuiltNonStaticEntities);
-                                    gltf = ConvertReorgSceneToGltf(groupsToConvert, reorgScene.regionID);
-                                }
-                                catch (Exception e) {
-                                    m_log.ErrorFormat("{0} Exception calling ConvertReorgSceneToGltf: {1}", LogHeader, e);
-                                }
-
-                                // Scan through all the textures and convert them into PNGs for the Gltf scene
-                                try {
-                                    if (m_params.ExportTextures) {
-                                        m_log.DebugFormat("{0} exporting textures", LogHeader);
-                                        WriteOutImages(reorgScene);
+                                    // Write out the Gltf information
+                                    if (gltf != null) {
+                                        try {
+                                            ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
+                                        }
+                                        catch (Exception e) {
+                                            m_log.ErrorFormat("{0} Exception calling ExportSceneAsGltf: {1}", LogHeader, e);
+                                        }
                                     }
-                                }
-                                catch (Exception e) {
-                                    m_log.ErrorFormat("{0} Exception calling WriteOutImages: {1}", LogHeader, e);
-                                }
-
-                                // Write out the Gltf information
-                                if (gltf != null) {
-                                    try {
-                                        ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
+                                    else {
+                                        m_log.InfoFormat("{0} Not exporting GLTF files because conversion failed", LogHeader);
                                     }
-                                    catch (Exception e) {
-                                        m_log.ErrorFormat("{0} Exception calling ExportSceneAsGltf: {1}", LogHeader, e);
-                                    }
-                                }
-                                else {
-                                    m_log.InfoFormat("{0} Not exporting GLTF files because conversion failed", LogHeader);
-                                }
-                            })
-                        ;
+                                })
+                            ;
+                        }
+                        catch (Exception e) {
+                            m_log.ErrorFormat("{0} Exception parocessing SOGs: {1}", LogHeader, e);
+                        }
                     }
                 }
             }
@@ -412,7 +422,7 @@ namespace org.herbal3d.BasilOS {
                 fi.faceImage = mapbmp;
                 fi.hasAlpha = false;
                 CreateAssetURI(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), out fi.imageFilename, out fi.imageURI);
-                epg.primaryExtendePrim.faces.Add(fi.num, fi);
+                epg.primaryExtendePrim.faces.Add(fi);
             }
             else {
                 // Fabricate a texture
@@ -430,7 +440,7 @@ namespace org.herbal3d.BasilOS {
                         fi.faceImage = theImage;
                     });
                 fi.hasAlpha = false;
-                epg.primaryExtendePrim.faces.Add(fi.num, fi);
+                epg.primaryExtendePrim.faces.Add(fi);
             }
 
             EntityGroup eg = new EntityGroup();
@@ -448,7 +458,7 @@ namespace org.herbal3d.BasilOS {
         /// <param name="pMesher"></param>
         private void UpdateTextureInfo(ExtendedPrimGroup epGroup, IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
             ExtendedPrim ep = epGroup.primaryExtendePrim;
-            foreach (var faceInfo in ep.faces.Values) {
+            foreach (FaceInfo faceInfo in ep.faces) {
 
                 // While we're in the neighborhood, map the texture coords based on the prim information
                 pMesher.UpdateCoords(faceInfo, ep.fromOS.primitive);
@@ -469,6 +479,11 @@ namespace org.herbal3d.BasilOS {
                     CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
                     GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
                         .Catch(e => {
+                            // Could not get the texture. Print error and otherwise blank out the texture
+                            faceInfo.textureID = null;
+                            faceInfo.faceImage = null;
+                            faceInfo.imageFilename = null;
+                            faceInfo.imageURI = null;
                             m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
                         })
                         .Then(theImage => {
@@ -511,6 +526,9 @@ namespace org.herbal3d.BasilOS {
             }
             else {
                 assetFetcher.FetchTextureAsImage(textureHandle)
+                .Catch(e => {
+                    prom.Reject(new Exception(String.Format("Could not fetch texture. handle={0}. e={1}", textureHandle, e)));
+                })
                 .Then(theImage => {
                     try {
                         textureCache.Add(textureHandle.GetHashCode(), theImage);
@@ -583,11 +601,11 @@ namespace org.herbal3d.BasilOS {
             // Go through all the static items and make a list of all the meshes with similar textures
             SimilarFaces similarFaces = new SimilarFaces();
             staticEntities.ForEachExtendedPrim(ep => {
-                foreach (FaceInfo faceInfo in ep.faces.Values) {
+                ep.faces.ForEach(faceInfo => {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
                     int hashCode = tef.GetHashCode();
-                    similarFaces.AddSimilarFace(hashCode, faceInfo) ;
-                }
+                    similarFaces.AddSimilarFace(hashCode, faceInfo);
+                });
             });
 
             EntityGroupList rebuilt = new EntityGroupList(
@@ -619,11 +637,11 @@ namespace org.herbal3d.BasilOS {
             SimilarFaces similarFaces = new SimilarFaces();
             eg.ForEach(epg => {
                 ExtendedPrim ep = epg.primaryExtendePrim;
-                foreach (FaceInfo faceInfo in ep.faces.Values) {
+                ep.faces.ForEach(faceInfo => {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
                     int hashCode = tef.GetHashCode();
                     similarFaces.AddSimilarFace(hashCode, faceInfo);
-                }
+                });
             });
 
             EntityGroup rebuilt = new EntityGroup(
@@ -682,7 +700,7 @@ namespace org.herbal3d.BasilOS {
             newFace.textureID = rootFace.textureID;
             newFace.faceImage = rootFace.faceImage;
             newFace.hasAlpha = rootFace.hasAlpha;
-            newEp.faces.Add(newFace.num, newFace);
+            newEp.faces.Add(newFace);
 
             // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
             //             LogHeader, newEp.translation, newEp.rotation);
@@ -768,7 +786,8 @@ namespace org.herbal3d.BasilOS {
         }
 
         private void WriteOutImagesForEP(ExtendedPrim ep) {
-            foreach (var faceInfo in ep.faces.Values) {
+            // foreach (var faceInfo in ep.faces.Values) {
+            ep.faces.ForEach(faceInfo => {
                 if (faceInfo.faceImage != null) {
                     string texFilename = faceInfo.imageFilename;
                     if (!File.Exists(texFilename)) {
@@ -800,7 +819,7 @@ namespace org.herbal3d.BasilOS {
                         }
                     }
                 }
-            }
+            });
         }
 
         // If the image is larger than a max, resize the image.
@@ -921,13 +940,13 @@ namespace org.herbal3d.BasilOS {
                 newNode.matrix = (OMV.Matrix4)ep.transform;
             }
 
-            foreach (var faceInfo in ep.faces.Values) {
+            ep.faces.ForEach(faceInfo => {
                 string meshID = ep.ID.ToString() + "_face" + faceInfo.num.ToString();
                 GltfMesh mesh = new GltfMesh(pGltf, meshID);
                 mesh.underlyingPrim = ep;
                 mesh.faceInfo = faceInfo;
                 newNode.meshes.Add(mesh);
-            };
+            });
 
             return newNode;
         }

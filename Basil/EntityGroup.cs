@@ -12,6 +12,14 @@ using OMVR = OpenMetaverse.Rendering;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
 
+/*
+    EntityGroupList is a collection of entities in a scene
+    EntityGroup is a group of prims that make up a scene entity (single prim or linkset)
+    ExtendedPrimGroup are the lod versions of an individual prim (usually only lod1)
+    ExtendedPrim is an individual prim (derived from Primitive, Sculpty, or Mesh)
+    FaceInfo are the meshes that make up an individual prim
+ */
+
 namespace org.herbal3d.BasilOS {
     public class CoordSystem {
         public const int Handedness = 0x200;    // bit that specifies the handedness
@@ -157,7 +165,7 @@ namespace org.herbal3d.BasilOS {
         public bool positionIsParentRelative;
 
         // The data is taken out of the structures above and copied here for mangling
-        public Dictionary<int, FaceInfo> faces;
+        public List<FaceInfo> faces;
 
         // This logic is here mostly because there are some entities that are not scene objects.
         // Terrain, in particular.
@@ -185,7 +193,7 @@ namespace org.herbal3d.BasilOS {
         public ExtendedPrim() {
             transform = null;
             coordSystem = new CoordSystem(CoordSystem.RightHand_Zup);    // default to SL coordinates
-            faces = new Dictionary<int, FaceInfo>();
+            faces = new List<FaceInfo>();
         }
 
         // Make a new extended prim based on an existing one
@@ -231,7 +239,7 @@ namespace org.herbal3d.BasilOS {
             // Copy the vertex information into our face information array.
             // Only the vertex and indices information is put into the face info.
             //       The texture info must be added later.
-            faces = new Dictionary<int, FaceInfo>();
+            faces = new List<FaceInfo>();
 
             if (pPrim != null) {
                 for (int ii = 0; ii < pFMesh.Faces.Count; ii++) {
@@ -242,7 +250,7 @@ namespace org.herbal3d.BasilOS {
                     OMVR.Face aFace = pFMesh.Faces[ii];
                     FaceInfo faceInfo = new FaceInfo(ii, this, aFace, tef);
 
-                    faces.Add(ii, faceInfo);
+                    faces.Add(faceInfo);
                 }
             }
         }
