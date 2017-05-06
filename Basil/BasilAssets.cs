@@ -27,6 +27,7 @@ using RSG;
 
 using OMV = OpenMetaverse;
 using OMVA = OpenMetaverse.Assets;
+using OpenMetaverse.Imaging;
 
 namespace org.herbal3d.BasilOS {
 
@@ -68,7 +69,7 @@ namespace org.herbal3d.BasilOS {
 
         /// <summary>
         /// Fetch a texture and return an OMVA.AssetTexture. The only information initialized
-        /// in the AssetTexture is the UUID and the binary data.
+        /// in the AssetTexture is the UUID and the binary data.s
         /// </summary>
         /// <param name="handle"></param>
         /// <returns></returns>
@@ -115,11 +116,21 @@ namespace org.herbal3d.BasilOS {
                     try {
                         Image imageDecoded = null;
                         if (m_params.UseOpenSimImageDecoder) {
+                            m_log.DebugFormat("{0} start OS decoding of {1}", LogHeader, handle.GetOSAssetString());
                             IJ2KDecoder imgDecoder = m_scene.RequestModuleInterface<IJ2KDecoder>();
                             imageDecoded = imgDecoder.DecodeToImage(asset.Data);
+                            m_log.DebugFormat("{0} finished OS decoding of {1}", LogHeader, handle.GetOSAssetString());
                         }
                         else {
-                            imageDecoded = CSJ2K.J2kImage.FromBytes(asset.Data);
+                            m_log.DebugFormat("{0} start decoding of {1}", LogHeader, handle.GetOSAssetString());
+                            ManagedImage mimage;
+                            if (OpenJPEG.DecodeToImage(asset.Data, out mimage, out imageDecoded)) {
+                                mimage = null;
+                            }
+                            else {
+                                imageDecoded = null;
+                            }
+                            m_log.DebugFormat("{0} finished decoding of {1}", LogHeader, handle.GetOSAssetString());
                         }
                         prom.Resolve(imageDecoded);
                     }

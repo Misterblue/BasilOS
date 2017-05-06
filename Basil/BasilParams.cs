@@ -43,6 +43,7 @@ namespace org.herbal3d.BasilOS {
         public string GltfTargetDir;    // where to store all the Gltf files
         public bool ExportTextures;     // also export textures to the target dir
         public int MaxTextureSize;      // the maximum pixel dimension for images if exporting
+        public bool ResizeImagesWithAlpha;  // Whether to resize (to MaxTextureSize) images with transparency
         public bool AddTerrainMesh;     // whether to create and add a terrain mesh
         public bool CreateTerrainSplat; // whether to generate a terrain mesh splat texture
 
@@ -57,6 +58,7 @@ namespace org.herbal3d.BasilOS {
 
         public bool LogConversionStats; // output numbers about number of entities converted
         public bool LogDetailedSharedFaceStats; // output numbers about face mesh sharing
+        public bool LogDetailedEntityInfo;      // output detailed information about each entity
         #pragma warning restore CS0649
 
         // =====================================================================================
@@ -96,7 +98,9 @@ namespace org.herbal3d.BasilOS {
             new ParameterDefn<bool>("ExportTextures", "Convert textures to PNGs and export to target dir",
                 true ),
             new ParameterDefn<int>("MaxTextureSize", "The maximum pixel dimension for images if exporting",
-                1024 ),
+                256 ),
+            new ParameterDefn<bool>("ResizeImagesWithAlpha", "Whether to resize (to MaxTextureSize) images with transparency",
+                true ),
             new ParameterDefn<bool>("AddTerrainMesh", "whether to create and add a terrain mesh",
                 true ),
             new ParameterDefn<bool>("CreateTerrainSplat", "whether to generate a terrain mesh splat texture",
@@ -115,6 +119,8 @@ namespace org.herbal3d.BasilOS {
                 true ),
             new ParameterDefn<bool>("LogDetailedSharedFaceStats", "output numbers about face mesh sharing",
                 true ),
+            new ParameterDefn<bool>("LogDetailedEntityInfo", "output detailed information about each entity",
+                false ),
         };
 
         // =====================================================================================

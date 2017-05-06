@@ -313,6 +313,7 @@ namespace org.herbal3d.BasilOS {
             OMV.Color4 aColor = OMV.Color4.Black;
 
             ext.values.Add(GltfExtension.valDiffuse, surfaceColor);
+            ext.values.Add(GltfExtension.valDoubleSided, true); // ThreeJS requires double sided
             // ext.values.Add(GltfExtension.valEmission, aColor);
             // ext.values.Add(GltfExtension.valSpecular, aColor); // not a value in LAMBERT
             if (mesh.faceInfo.textureEntry.Shiny != OMV.Shininess.None) {
@@ -339,6 +340,7 @@ namespace org.herbal3d.BasilOS {
                     theTexture.sampler = defaultSampler;
                     GltfImage theImage = null;
                     if (!gltfRoot.images.GetByUUID(texID, out theImage)) {
+                        // If this is the first time seeing this texture, create the underlying GltfImage
                         theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
                         theImage.underlyingUUID = texID;
                         makeAssetURI(MakeAssetURITypeImage, texID.ToString(), out theImage.filename, out theImage.uri);

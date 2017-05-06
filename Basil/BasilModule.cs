@@ -187,7 +187,9 @@ namespace org.herbal3d.BasilOS {
                                 .Then(allSOGs => {
                                     // Everything has been converted into meshes and available in 'allSOGs'.
                                     m_log.DebugFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
-                                    stats.DumpDetailed(allSOGs);
+                                    if (m_params.LogDetailedEntityInfo) {
+                                        stats.DumpDetailed(allSOGs);
+                                    }
 
                                     // Scan the entities and reorganize into static/non-static and find shared face meshes
                                     ReorganizedScene reorgScene = ReorganizeScene(allSOGs, "region_" + m_scene.Name.ToLower());
@@ -477,7 +479,7 @@ namespace org.herbal3d.BasilOS {
                 if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
                     faceInfo.textureID = texID;
                     CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
-                    GetUniqueTextureData(new EntityHandle(texID), assetFetcher)
+                    GetUniqueTextureData(faceInfo, assetFetcher)
                         .Catch(e => {
                             // Could not get the texture. Print error and otherwise blank out the texture
                             faceInfo.textureID = null;
@@ -517,28 +519,39 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Keep a cache if image data and either fetch and Image or return a cached instance.
-        private Promise<Image> GetUniqueTextureData(EntityHandle textureHandle, IAssetFetcherWrapper assetFetcher) {
+        private Promise<Image> GetUniqueTextureData(FaceInfo faceInfo, IAssetFetcherWrapper assetFetcher) {
 
             Promise<Image> prom = new Promise<Image>();
+            EntityHandle textureHandle = new EntityHandle((OMV.UUID)faceInfo.textureID);
             int hash = textureHandle.GetHashCode();
             if (textureCache.ContainsKey(hash)) {
                 prom.Resolve(textureCache[hash]);
             }
             else {
-                assetFetcher.FetchTextureAsImage(textureHandle)
-                .Catch(e => {
-                    prom.Reject(new Exception(String.Format("Could not fetch texture. handle={0}. e={1}", textureHandle, e)));
-                })
-                .Then(theImage => {
-                    try {
-                        textureCache.Add(textureHandle.GetHashCode(), theImage);
-                        // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", LogHeader, textureHandle, hash);
-                        prom.Resolve(theImage);
-                    }
-                    catch (Exception e) {
-                        prom.Reject(new Exception(String.Format("Texture conversion failed. handle={0}. e={1}", textureHandle, e)));
-                    }
-                });
+                // If the converted file already exists, read that one in
+                if (File.Exists(faceInfo.imageFilename)) {
+                    var anImage = Image.FromFile(faceInfo.imageFilename);
+                    m_log.DebugFormat("{0} GetUniqueTextureData: reading in existing image from {1}", LogHeader, faceInfo.imageFilename);
+                    textureCache.Add(hash, anImage);
+                    prom.Resolve(anImage);
+                }
+                else {
+                    // If not in the cache or converted file, get it from the asset server
+                    assetFetcher.FetchTextureAsImage(textureHandle)
+                    .Catch(e => {
+                        prom.Reject(new Exception(String.Format("Could not fetch texture. handle={0}. e={1}", textureHandle, e)));
+                    })
+                    .Then(theImage => {
+                        try {
+                            textureCache.Add(textureHandle.GetHashCode(), theImage);
+                            // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", LogHeader, textureHandle, hash);
+                            prom.Resolve(theImage);
+                        }
+                        catch (Exception e) {
+                            prom.Reject(new Exception(String.Format("Texture conversion failed. handle={0}. e={1}", textureHandle, e)));
+                        }
+                    });
+                }
             }
             return prom;
         }
@@ -792,7 +805,7 @@ namespace org.herbal3d.BasilOS {
                     string texFilename = faceInfo.imageFilename;
                     if (!File.Exists(texFilename)) {
                         Image texImage = faceInfo.faceImage;
-                        if (!faceInfo.hasAlpha) {
+                        if (m_params.ResizeImagesWithAlpha || !faceInfo.hasAlpha) {
                             // For unknown reasons, the resizer does not handle transparency.
                             // When that problem is solved, remove this 'if'.
                             texImage = ConstrainTextureSize(faceInfo.faceImage);
@@ -827,14 +840,25 @@ namespace org.herbal3d.BasilOS {
         private Image ConstrainTextureSize(Image inImage) {
             int size = m_params.MaxTextureSize;
             if (inImage.Width > size || inImage.Height > size) {
-                Image thumbNail = new Bitmap(size, size, inImage.PixelFormat);
+                int sizeW = size;
+                int sizeH = size;
+                if (inImage.Width > size) {
+                    sizeH = (int)(inImage.Height * (size / inImage.Width));
+                }
+                else {
+                    sizeW = (int)(inImage.Width * (size / inImage.Height));
+                }
+                m_log.DebugFormat("{0} starting resize of image from {1}/{2} to {3}/{4}",
+                            LogHeader, inImage.Width, inImage.Height, sizeW, sizeH);
+                Image thumbNail = new Bitmap(sizeW, sizeH, inImage.PixelFormat);
                 using (Graphics g = Graphics.FromImage(thumbNail)) {
                     g.CompositingQuality = CompositingQuality.HighQuality;
                     g.SmoothingMode = SmoothingMode.HighQuality;
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                    Rectangle rect = new Rectangle(0, 0, size, size);
+                    Rectangle rect = new Rectangle(0, 0, sizeW, sizeH);
                     g.DrawImage(inImage, rect);
                 }
+                m_log.DebugFormat("{0} completed resize of image from {1}/{2}", LogHeader, inImage.Width, inImage.Height);
                 return thumbNail;
             }
             return inImage;
