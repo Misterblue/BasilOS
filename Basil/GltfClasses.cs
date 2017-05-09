@@ -352,7 +352,10 @@ namespace org.herbal3d.BasilOS {
                 ext.values.Add(GltfExtension.valDiffuse, theTexture.ID);
 
                 ext.values.Remove(GltfExtension.valTransparent);
-                ext.values.Add(GltfExtension.valTransparent, mesh.faceInfo.hasAlpha);
+                if (mesh.faceInfo.hasAlpha) {
+                    // the spec says default value is 'false' so only specify if 'true'
+                    ext.values.Add(GltfExtension.valTransparent, mesh.faceInfo.hasAlpha);
+                }
             }
 
             theMaterial.extensions.Add(ext);

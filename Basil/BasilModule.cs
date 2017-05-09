@@ -842,12 +842,14 @@ namespace org.herbal3d.BasilOS {
             if (inImage.Width > size || inImage.Height > size) {
                 int sizeW = size;
                 int sizeH = size;
+                /*
                 if (inImage.Width > size) {
                     sizeH = (int)(inImage.Height * (size / inImage.Width));
                 }
                 else {
                     sizeW = (int)(inImage.Width * (size / inImage.Height));
                 }
+                */
                 m_log.DebugFormat("{0} starting resize of image from {1}/{2} to {3}/{4}",
                             LogHeader, inImage.Width, inImage.Height, sizeW, sizeH);
                 Image thumbNail = new Bitmap(sizeW, sizeH, inImage.PixelFormat);
