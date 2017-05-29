@@ -266,6 +266,12 @@ namespace org.herbal3d.BasilOS {
             }
             return ret;
         }
+
+        public string Stats() {
+            StringBuilder buff = new StringBuilder();
+            buff.Append("ep:faces=" + this.faces.Count.ToString());
+            return buff.ToString();
+        }
     };
 
     // A prim mesh can be made up of many versions
@@ -295,6 +301,13 @@ namespace org.herbal3d.BasilOS {
                 return ret;
             }
         }
+        public string Stats() {
+            StringBuilder buff = new StringBuilder();
+            buff.Append("epg:lods=" + this.Keys.Count.ToString());
+            buff.Append(",");
+            buff.Append(this.primaryExtendePrim.Stats());
+            return buff.ToString();
+        }
     }
 
     // some entities are made of multiple prims (linksets)
@@ -302,6 +315,15 @@ namespace org.herbal3d.BasilOS {
         public EntityGroup() : base() {
         }
         public EntityGroup(List<ExtendedPrimGroup> list) : base(list) {
+        }
+        public string Stats() {
+            StringBuilder buff = new StringBuilder();
+            buff.Append("EntityGroup: cnt=" + this.Count.ToString() + ":");
+            this.ForEach(epg => {
+                buff.Append(epg.Stats());
+                buff.Append(",");
+            });
+            return buff.ToString();
         }
     }
 

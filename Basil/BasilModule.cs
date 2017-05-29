@@ -255,6 +255,9 @@ namespace org.herbal3d.BasilOS {
                                         // gltf = ConvertReorgSceneToGltf(reorgScene);
                                         var groupsToConvert = new EntityGroupList(reorgScene.rebuiltFaceEntities);
                                         groupsToConvert.AddRange(reorgScene.rebuiltNonStaticEntities);
+                                        // m_log.DebugFormat("{0} Converting to GLTF. rebuiltFaceEntities={1}, rebuiltNonStaticEntities={2}, totalConverting={3}",
+                                        //     LogHeader, reorgScene.rebuiltFaceEntities.Count,
+                                        //     reorgScene.rebuiltNonStaticEntities.Count, groupsToConvert.Count);
                                         gltf = ConvertReorgSceneToGltf(groupsToConvert, reorgScene.regionID);
                                     }
                                     catch (Exception e) {
@@ -515,20 +518,26 @@ namespace org.herbal3d.BasilOS {
 
             // Go through all the materialed meshes and see if there are meshes to share
             SimilarFaces similarFaces = new SimilarFaces();
+            // int totalFaces = 0; // DEBUG DEBUG
             eg.ForEach(epg => {
                 ExtendedPrim ep = epg.primaryExtendePrim;
                 ep.faces.ForEach(faceInfo => {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
                     int hashCode = tef.GetHashCode();
                     similarFaces.AddSimilarFace(hashCode, faceInfo);
+                    // totalFaces++;
                 });
             });
+            // m_log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: EGs={1}, totalFaces={2}, similarFaces={3}",
+            //         LogHeader, eg.Count, totalFaces, similarFaces.Count);
 
             EntityGroup rebuilt = new EntityGroup(
                 similarFaces.Values.Select(similarFaceList => {
                     return new ExtendedPrimGroup(CreateExtendedPrimFromSimilarFaces(similarFaceList));
                 }).ToList()
             );
+
+            m_log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: after build: {1}", LogHeader, rebuilt.Stats());
 
             return rebuilt;
         }
@@ -710,7 +719,7 @@ namespace org.herbal3d.BasilOS {
             // Add any children of the root node
             eg.ForEach(epg => {
                 ExtendedPrim ep = epg.primaryExtendePrim;
-                if (!ep.isRoot) {
+                if (ep != rootPrim) {
                     GltfNode gChildNode = GltfNodeFromExtendedPrim(gltf, null, ep);
                     gRootNode.children.Add(gChildNode);
                 }
