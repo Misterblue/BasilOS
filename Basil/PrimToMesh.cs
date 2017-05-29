@@ -34,7 +34,7 @@ using OpenSim.Region.Framework.Scenes;
 
 namespace org.herbal3d.BasilOS {
 
-    class PrimToMesh : IDisposable {
+    public class PrimToMesh : IDisposable {
         private OMVR.MeshmerizerR m_mesher;
         ILog m_log;
         String LogHeader = "[Basil.PrimToMesh]";
@@ -48,7 +48,7 @@ namespace org.herbal3d.BasilOS {
         /// Create and return a faceted mesh.
         /// </summary>
         public IPromise<ExtendedPrimGroup> CreateMeshResource(SceneObjectGroup sog, SceneObjectPart sop,
-                    OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod, BasilStats stats) {
+                    OMV.Primitive prim, IAssetFetcher assetFetcher, OMVR.DetailLevel lod, BasilStats stats) {
 
             var prom = new Promise<ExtendedPrimGroup>();
 
@@ -105,7 +105,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         private IPromise<ExtendedPrimGroup> MeshFromPrimSculptData(SceneObjectGroup sog, SceneObjectPart sop,
-                                OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod) {
+                                OMV.Primitive prim, IAssetFetcher assetFetcher, OMVR.DetailLevel lod) {
 
             var prom = new Promise<ExtendedPrimGroup>();
 
@@ -129,7 +129,7 @@ namespace org.herbal3d.BasilOS {
         }
 
         private IPromise<ExtendedPrimGroup> MeshFromPrimMeshData(SceneObjectGroup sog, SceneObjectPart sop,
-                                OMV.Primitive prim, IAssetFetcherWrapper assetFetcher, OMVR.DetailLevel lod) {
+                                OMV.Primitive prim, IAssetFetcher assetFetcher, OMVR.DetailLevel lod) {
 
             var prom = new Promise<ExtendedPrimGroup>();
 

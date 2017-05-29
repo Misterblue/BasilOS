@@ -75,8 +75,9 @@ namespace org.herbal3d.BasilOS {
         public Image faceImage;
         public bool hasAlpha;           // true if there is some transparancy in the surface
         public bool fullAlpha;          // true if the alpha is everywhere
-        public string imageFilename;    // filename built for this face material
-        public string imageURI;         // URI built for this face material
+        // public string imageFilename;    // filename built for this face material
+        // public string imageURI;         // URI built for this face material
+        public BasilPersist persist;    // Information on persisting the image as a file and an URI
 
         private static OMV.Primitive.TextureEntryFace DefaultWhite =
                         new OMV.Primitive.TextureEntryFace(null) { TextureID = OMV.Primitive.TextureEntry.WHITE_TEXTURE };

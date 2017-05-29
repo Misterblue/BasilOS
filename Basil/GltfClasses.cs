@@ -267,19 +267,19 @@ namespace org.herbal3d.BasilOS {
 
         // After all the nodes have been added to a Gltf class, build all the
         //    dependent structures
-        public void BuildAccessorsAndBuffers(MakeAssetURI makeAssetURI, BasilParams pParams) {
+        public void BuildAccessorsAndBuffers(BasilPersist persist, BasilModuleContext context) {
             
             // Scan all the meshes and build the materials from the face texture information
-            BuildPrimitives(makeAssetURI);
+            BuildPrimitives(persist);
 
             // Scan all the created meshes and create the Buffers, BufferViews, and Accessors
-            BuildBuffers(makeAssetURI, pParams.VerticesMaxForBuffer);
+            BuildBuffers(persist, context.parms.VerticesMaxForBuffer);
         }
 
         // Meshes with FaceInfo's have been added to the scene. Pass over all
         //   the meshes and create the Primitives, Materials, and Images.
         // Called before calling ToJSON().
-        public void BuildPrimitives(MakeAssetURI makeAssetURI) {
+        public void BuildPrimitives(BasilPersist persist) {
             // 20170201: ThreeJS defaults to GL_CLAMP but GLTF should default to GL_REPEAT/WRAP
             // Create a sampler for all the textures that forces WRAPing
             GltfSampler defaultSampler = new GltfSampler(gltfRoot, "simpleTextureRepeat");
@@ -293,13 +293,13 @@ namespace org.herbal3d.BasilOS {
                 // int hash = mesh.faceInfo.textureEntry.GetHashCode();
                 int hash = mesh.faceInfo.GetTextureHash();
                 if (!gltfRoot.materials.GetHash(hash, out theMaterial)) {
-                    theMaterial = BuildMaterial(mesh, defaultSampler, makeAssetURI);
+                    theMaterial = BuildMaterial(mesh, defaultSampler, persist);
                 }
                 mesh.onePrimitive.material = theMaterial;
             });
         }
 
-        public GltfMaterial BuildMaterial(GltfMesh mesh, GltfSampler defaultSampler, MakeAssetURI makeAssetURI) {
+        public GltfMaterial BuildMaterial(GltfMesh mesh, GltfSampler defaultSampler, BasilPersist persist) {
             // Material has not beeen created yet
             GltfMaterial theMaterial = new GltfMaterial(gltfRoot, mesh.ID + "_mat");
             theMaterial.hash = mesh.faceInfo.GetTextureHash();
@@ -313,7 +313,7 @@ namespace org.herbal3d.BasilOS {
             OMV.Color4 aColor = OMV.Color4.Black;
 
             ext.values.Add(GltfExtension.valDiffuse, surfaceColor);
-            ext.values.Add(GltfExtension.valDoubleSided, true); // ThreeJS requires double sided
+            // ext.values.Add(GltfExtension.valDoubleSided, true);
             // ext.values.Add(GltfExtension.valEmission, aColor);
             // ext.values.Add(GltfExtension.valSpecular, aColor); // not a value in LAMBERT
             if (mesh.faceInfo.textureEntry.Shiny != OMV.Shininess.None) {
@@ -343,7 +343,8 @@ namespace org.herbal3d.BasilOS {
                         // If this is the first time seeing this texture, create the underlying GltfImage
                         theImage = new GltfImage(gltfRoot, texID.ToString() + "_img");
                         theImage.underlyingUUID = texID;
-                        makeAssetURI(MakeAssetURITypeImage, texID.ToString(), out theImage.filename, out theImage.uri);
+                        theImage.filename = persist.CreateFilename(Gltf.MakeAssetURITypeImage, texID.ToString());
+                        theImage.uri = persist.CreateURI(Gltf.MakeAssetURITypeImage, texID.ToString());
                     }
                     theTexture.source = theImage;
                 }
@@ -366,14 +367,14 @@ namespace org.herbal3d.BasilOS {
         // Meshes with FaceInfo's have been added to the scene. Pass over all
         //   the meshes and create the Buffers, BufferViews, and Accessors.
         // Called before calling ToJSON().
-        public void BuildBuffers(MakeAssetURI makeAssetURI, int maxVerticesPerBuffer) {
+        public void BuildBuffers(BasilPersist persist, int maxVerticesPerBuffer) {
             // Partition the meshes into smaller groups based on number of vertices going out
             List<GltfMesh> partial = new List<GltfMesh>();
             int totalVertices = 0;
             meshes.ForEach(mesh => {
                 // If adding this mesh will push the total vertices in this buffer over the max, flush this buffer.
                 if ((totalVertices + mesh.faceInfo.vertexs.Count) > maxVerticesPerBuffer) {
-                    BuildBufferForSomeMeshes(partial, makeAssetURI);
+                    BuildBufferForSomeMeshes(partial, persist);
                     partial.Clear();
                     totalVertices = 0;
                 }
@@ -381,12 +382,12 @@ namespace org.herbal3d.BasilOS {
                 partial.Add(mesh);
             });
             if (partial.Count > 0) {
-                BuildBufferForSomeMeshes(partial, makeAssetURI);
+                BuildBufferForSomeMeshes(partial, persist);
             }
         }
 
         // For a collection of meshes, create the buffers and accessors.
-        public void BuildBufferForSomeMeshes(List<GltfMesh> someMeshes, MakeAssetURI makeAssetURI) {
+        public void BuildBufferForSomeMeshes(List<GltfMesh> someMeshes, BasilPersist persist) {
             // Pass over all the vertices in all the meshes and collect common vertices into 'vertexCollection'
             int numMeshes = 0;
             int numVerts = 0;
@@ -438,12 +439,11 @@ namespace org.herbal3d.BasilOS {
             paddedSizeofIndices += (padUnit - (paddedSizeofIndices % padUnit)) % padUnit;
 
             // A key added to the buffer, vertices, and indices names to uniquify them
-            string buffNum =  String.Format("{0:000}", buffers.Count + 1);
             byte[] binBuffRaw = new byte[paddedSizeofIndices + sizeofVertices];
-            string buffFilename = null;
-            string buffURI = null;
+            string buffNum =  String.Format("{0:000}", buffers.Count + 1);
             string buffName = "buffer" + buffNum;
-            makeAssetURI(Gltf.MakeAssetURITypeBuff, buffName, out buffFilename, out buffURI);
+            string buffFilename = persist.CreateFilename(Gltf.MakeAssetURITypeBuff, buffName);
+            string buffURI = persist.CreateURI(Gltf.MakeAssetURITypeBuff, buffName);
             // m_log.DebugFormat("{0} BuildBuffers: make buffer: name={1}, filename={2}, uri={3}", LogHeader, buffName, buffFilename, buffURI);
             GltfBuffer binBuff = new GltfBuffer(gltfRoot, buffName, "arraybuffer", buffFilename, buffURI);
             binBuff.bufferBytes = binBuffRaw;

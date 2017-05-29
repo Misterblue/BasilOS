@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Mono.Addins;
@@ -27,6 +28,7 @@ using log4net;
 using Nini.Config;
 
 using OpenSim.Framework;
+using OpenSim.Region.CoreModules.World.LegacyMap;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.PhysicsModules.SharedBase; // needed to test if objects are physical
@@ -37,10 +39,21 @@ using OMV = OpenMetaverse;
 using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
-using System.IO;
-using OpenSim.Region.CoreModules.World.LegacyMap;
 
 namespace org.herbal3d.BasilOS {
+
+    // Class passed around for global context for this region module instance
+    public class BasilModuleContext {
+        public BasilParams parms;
+        public Scene scene;
+        public ILog log;
+
+        public BasilModuleContext(BasilParams pParms, ILog pLog) {
+            parms = pParms;
+            log = pLog;
+            scene = null;
+        }
+    }
 
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "BasilModule")]
     public class BasilModule : INonSharedRegionModule {
@@ -50,12 +63,10 @@ namespace org.herbal3d.BasilOS {
         private BasilParams m_params;
         private IConfig m_sysConfig = null;
 
-        protected Scene m_scene;
+        private BasilModuleContext _context;
+
         private OMV.Vector3 m_regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
         private OMV.Vector3 m_regionCenter = new OMV.Vector3(Constants.RegionSize/2, Constants.RegionSize/2, 0f);
-
-        // Texture cache used when processing one region
-        private Dictionary<int, Image> textureCache = new Dictionary<int, Image>();
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -79,6 +90,8 @@ namespace org.herbal3d.BasilOS {
             if (m_params.Enabled) {
                 m_log.InfoFormat("{0} Enabled", LogHeader);
             }
+
+            _context = new BasilModuleContext(m_params, m_log);
         }
         
         // IRegionModuleBase.Close()
@@ -91,9 +104,9 @@ namespace org.herbal3d.BasilOS {
         // Called once for a NonSharedRegionModule when the region is initialized
         public void AddRegion(Scene scene) {
             if (m_params.Enabled) {
-                m_scene = scene;
-                m_regionDimensions.X = m_scene.RegionInfo.RegionSizeX;
-                m_regionDimensions.Y = m_scene.RegionInfo.RegionSizeY;
+                _context.scene = scene;
+                m_regionDimensions.X = _context.scene.RegionInfo.RegionSizeX;
+                m_regionDimensions.Y = _context.scene.RegionInfo.RegionSizeY;
                 m_regionCenter.X = m_regionDimensions.X / 2f;
                 m_regionCenter.Y = m_regionDimensions.Y / 2f;
 
@@ -166,17 +179,14 @@ namespace org.herbal3d.BasilOS {
                 return;
             }
 
-            // Start a region with a clean cache
-            textureCache.Clear();
+            // m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, _context.scene={2}", LogHeader,
+            //             SceneManager.Instance.CurrentScene.Name, _context.scene.Name);
 
-            // m_log.DebugFormat("{0} ProcessConvert. CurrentScene={1}, m_scene={2}", LogHeader,
-            //             SceneManager.Instance.CurrentScene.Name, m_scene.Name);
+            if (SceneManager.Instance.CurrentScene.Name == _context.scene.Name) {
 
-            if (SceneManager.Instance.CurrentScene.Name == m_scene.Name) {
+                using (BasilStats stats = new BasilStats(_context.scene, m_log)) {
 
-                using (BasilStats stats = new BasilStats(m_scene, m_log)) {
-
-                    using (IAssetFetcherWrapper assetFetcher = new OSAssetFetcher(m_scene, m_log, m_params)) {
+                    using (IAssetFetcher assetFetcher = new OSAssetFetcher(_context.scene, m_log, m_params)) {
 
                         try {
 
@@ -192,7 +202,7 @@ namespace org.herbal3d.BasilOS {
                                     }
 
                                     // Scan the entities and reorganize into static/non-static and find shared face meshes
-                                    ReorganizedScene reorgScene = ReorganizeScene(allSOGs, "region_" + m_scene.Name.ToLower());
+                                    ReorganizedScene reorgScene = ReorganizeScene(allSOGs, "region_" + _context.scene.Name.ToLower());
 
                                     // Scene objects in reorgScene.nonStaticEntities and reorgScene.staticEntities
 
@@ -265,7 +275,7 @@ namespace org.herbal3d.BasilOS {
                                     // Write out the Gltf information
                                     if (gltf != null) {
                                         try {
-                                            ExportSceneAsGltf(gltf, m_scene.Name, m_params.GltfTargetDir);
+                                            ExportSceneAsGltf(gltf, _context.scene.Name, m_params.GltfTargetDir);
                                         }
                                         catch (Exception e) {
                                             m_log.ErrorFormat("{0} Exception calling ExportSceneAsGltf: {1}", LogHeader, e);
@@ -287,14 +297,16 @@ namespace org.herbal3d.BasilOS {
 
         // For each of the SceneObjectGroups in the scene, create an EntityGroup with everything converted to meshes
         // Also add the terrain if needed.
-        private IPromise<EntityGroupList> ConvertEntitiesToMeshes(IAssetFetcherWrapper assetFetcher, BasilStats stats) {
+        private IPromise<EntityGroupList> ConvertEntitiesToMeshes(IAssetFetcher assetFetcher, BasilStats stats) {
             Promise<EntityGroupList> prom = new Promise<EntityGroupList>();
 
             using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
 
+                BConverterOS converter = new BConverterOS(assetFetcher, assetMesher, _context, stats);
+
                 Promise<EntityGroup>.All(
-                    m_scene.GetSceneObjectGroups().Select(sog => {
-                        return ConvertSOG(sog, assetMesher, assetFetcher, stats);
+                    _context.scene.GetSceneObjectGroups().Select(sog => {
+                        return converter.Convert(sog, assetFetcher);
                     })
                 )
                 .Catch(e => {
@@ -308,7 +320,7 @@ namespace org.herbal3d.BasilOS {
                     if (m_params.AddTerrainMesh) {
                         m_log.DebugFormat("{0} ConvertEntitiesToMeshes: building and adding terrain", LogHeader);
                         try {
-                            var ePrimGroup = CreateTerrainMesh(m_scene, assetMesher, assetFetcher, stats);
+                            var ePrimGroup = CreateTerrainMesh(_context.scene, assetMesher, assetFetcher, stats);
                             m_log.DebugFormat("{0} ConvertEntitiesToMeshes: completed creation. Adding to mesh set", LogHeader);
                             egl.Add(ePrimGroup);
                             prom.Resolve(egl);
@@ -328,49 +340,9 @@ namespace org.herbal3d.BasilOS {
             return prom;
         }
 
-        // Convert all prims in SOG into meshes and return the mesh group.
-        private IPromise<EntityGroup> ConvertSOG(SceneObjectGroup sog, PrimToMesh mesher,
-                        IAssetFetcherWrapper assetFetcher, BasilStats stats) {
-            var prom = new Promise<EntityGroup>();
-
-            // Create meshes for all the parts of the SOG
-            Promise<ExtendedPrimGroup>.All(
-                sog.Parts.Select(sop => {
-                    OMV.Primitive aPrim = sop.Shape.ToOmvPrimitive();
-                    return mesher.CreateMeshResource(sog, sop, aPrim, assetFetcher, OMVR.DetailLevel.Highest, stats);
-                } )
-            )
-            // Tweak the parts individually (scale, texturize, ...)
-            .Then(epgs => {
-                return epgs.Select(epg => {
-                    // If scaling is done in the mesh, do it now
-                    if (!m_params.DisplayTimeScaling) {
-                        PrimToMesh.ScaleMeshes(epg);
-                        foreach (ExtendedPrim ep in epg.Values) {
-                            ep.scale = new OMV.Vector3(1, 1, 1);
-                        }
-                    }
-
-                    // The prims in the group need to be decorated with texture/image information
-                    UpdateTextureInfo(epg, assetFetcher, mesher);
-
-                    return epg;
-                });
-            })
-            .Catch(e => {
-                m_log.ErrorFormat("{0} Failed meshing of SOG. ID={1}: {2}", LogHeader, sog.UUID, e);
-                prom.Reject(new Exception(String.Format("failed meshing of SOG. ID={0}: {1}", sog.UUID, e)));
-            })
-            .Done (epgs => {
-                prom.Resolve(new EntityGroup(epgs.ToList()));
-            }) ;
-
-            return prom;
-        }
-
         // Create a mesh for the terrain of the current scene
         private EntityGroup CreateTerrainMesh(Scene pScene, PrimToMesh assetMesher,
-                            IAssetFetcherWrapper assetFetcher, BasilStats stats) {
+                            IAssetFetcher assetFetcher, BasilStats stats) {
 
             int XSize = pScene.Heightmap.Width;
             int YSize = pScene.Heightmap.Height;
@@ -402,7 +374,7 @@ namespace org.herbal3d.BasilOS {
             }
 
             m_log.DebugFormat("{0}: CreateTerrainMesh. calling MeshFromHeightMap", LogHeader);
-            ExtendedPrimGroup epg = assetMesher.MeshFromHeightMap(heightMap, (int)m_scene.RegionInfo.RegionSizeX, (int)m_scene.RegionInfo.RegionSizeY);
+            ExtendedPrimGroup epg = assetMesher.MeshFromHeightMap(heightMap, (int)_context.scene.RegionInfo.RegionSizeX, (int)_context.scene.RegionInfo.RegionSizeY);
 
             // Number found in RegionSettings.cs as DEFAULT_TERRAIN_TEXTURE_3
             OMV.UUID defaultTextureID = new OMV.UUID("179cdabd-398a-9b6b-1391-4dc333ba321f");
@@ -411,9 +383,9 @@ namespace org.herbal3d.BasilOS {
             if (m_params.CreateTerrainSplat) {
                 // Use the OpenSim maptile generator to create a texture for the terrain
                 var terrainRenderer = new TexturedMapTileRenderer();
-                terrainRenderer.Initialise(m_scene, m_sysConfig.ConfigSource);
+                terrainRenderer.Initialise(_context.scene, m_sysConfig.ConfigSource);
 
-                var mapbmp = new Bitmap((int)m_scene.Heightmap.Width, (int)m_scene.Heightmap.Height,
+                var mapbmp = new Bitmap((int)_context.scene.Heightmap.Width, (int)_context.scene.Heightmap.Height,
                                         System.Drawing.Imaging.PixelFormat.Format24bppRgb);
                 terrainRenderer.TerrainToBitmap(mapbmp);
 
@@ -423,7 +395,7 @@ namespace org.herbal3d.BasilOS {
                 fi.textureID = OMV.UUID.Random();
                 fi.faceImage = mapbmp;
                 fi.hasAlpha = false;
-                CreateAssetURI(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), out fi.imageFilename, out fi.imageURI);
+                fi.persist = new BasilPersist(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), _context);
                 epg.primaryExtendePrim.faces.Add(fi);
             }
             else {
@@ -449,111 +421,6 @@ namespace org.herbal3d.BasilOS {
             eg.Add(epg);
 
             return eg;
-        }
-
-        /// <summary>
-        /// Scan through all the ExtendedPrims and finish any texture updating.
-        /// This includes UV coordinate mappings and fetching any image that goes with the texture.
-        /// </summary>
-        /// <param name="epGroup">Collections of meshes to update</param>
-        /// <param name="assetFetcher">Fetcher for getting images, etc</param>
-        /// <param name="pMesher"></param>
-        private void UpdateTextureInfo(ExtendedPrimGroup epGroup, IAssetFetcherWrapper assetFetcher, PrimToMesh pMesher) {
-            ExtendedPrim ep = epGroup.primaryExtendePrim;
-            foreach (FaceInfo faceInfo in ep.faces) {
-
-                // While we're in the neighborhood, map the texture coords based on the prim information
-                pMesher.UpdateCoords(faceInfo, ep.fromOS.primitive);
-
-                UpdateFaceInfoWithTexture(faceInfo, assetFetcher);
-            }
-        }
-
-        // Check to see if the FaceInfo has a textureID and, if so, read it in and populate the FaceInfo
-        //    with that texture data.
-        private void UpdateFaceInfoWithTexture(FaceInfo faceInfo, IAssetFetcherWrapper assetFetcher) {
-            // If the texture includes an image, read it in.
-            OMV.UUID texID = faceInfo.textureEntry.TextureID;
-            try {
-                faceInfo.hasAlpha = (faceInfo.textureEntry.RGBA.A != 1.0f);
-                if (texID != OMV.UUID.Zero && texID != OMV.Primitive.TextureEntry.WHITE_TEXTURE) {
-                    faceInfo.textureID = texID;
-                    CreateAssetURI(Gltf.MakeAssetURITypeImage, texID.ToString(), out faceInfo.imageFilename, out faceInfo.imageURI);
-                    GetUniqueTextureData(faceInfo, assetFetcher)
-                        .Catch(e => {
-                            // Could not get the texture. Print error and otherwise blank out the texture
-                            faceInfo.textureID = null;
-                            faceInfo.faceImage = null;
-                            faceInfo.imageFilename = null;
-                            faceInfo.imageURI = null;
-                            m_log.ErrorFormat("{0} UpdateTextureInfo. {1}", LogHeader, e);
-                        })
-                        .Then(theImage => {
-                            faceInfo.faceImage = theImage;
-                            if (!faceInfo.hasAlpha && Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
-                                // The image could have alpha values in it
-                                Bitmap bitmapImage = theImage as Bitmap;
-                                if (bitmapImage != null) {
-                                    for (int xx = 0; xx < bitmapImage.Width; xx++) {
-                                        for (int yy = 0; yy < bitmapImage.Height; yy++) {
-                                            if (bitmapImage.GetPixel(xx, yy).A != 255) {
-                                                faceInfo.hasAlpha = true;
-                                                break;
-                                            }
-                                        }
-                                        if (faceInfo.hasAlpha)
-                                            break;
-                                    }
-                                }
-                                else {
-                                    m_log.DebugFormat("{0} UpdateTextureInfo. Couldn't check for Alpha because image not a bitmap", LogHeader);
-                                }
-                            }
-                        });
-                }
-            }
-            catch (Exception e) {
-                m_log.ErrorFormat("{0}: UpdateFaceInfoWithTexture: exception updating faceInfo. id={1}: {2}",
-                                    LogHeader, texID, e);
-            }
-        }
-
-        // Keep a cache if image data and either fetch and Image or return a cached instance.
-        private Promise<Image> GetUniqueTextureData(FaceInfo faceInfo, IAssetFetcherWrapper assetFetcher) {
-
-            Promise<Image> prom = new Promise<Image>();
-            EntityHandle textureHandle = new EntityHandle((OMV.UUID)faceInfo.textureID);
-            int hash = textureHandle.GetHashCode();
-            if (textureCache.ContainsKey(hash)) {
-                prom.Resolve(textureCache[hash]);
-            }
-            else {
-                // If the converted file already exists, read that one in
-                if (File.Exists(faceInfo.imageFilename)) {
-                    var anImage = Image.FromFile(faceInfo.imageFilename);
-                    m_log.DebugFormat("{0} GetUniqueTextureData: reading in existing image from {1}", LogHeader, faceInfo.imageFilename);
-                    textureCache.Add(hash, anImage);
-                    prom.Resolve(anImage);
-                }
-                else {
-                    // If not in the cache or converted file, get it from the asset server
-                    assetFetcher.FetchTextureAsImage(textureHandle)
-                    .Catch(e => {
-                        prom.Reject(new Exception(String.Format("Could not fetch texture. handle={0}. e={1}", textureHandle, e)));
-                    })
-                    .Then(theImage => {
-                        try {
-                            textureCache.Add(textureHandle.GetHashCode(), theImage);
-                            // m_log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", LogHeader, textureHandle, hash);
-                            prom.Resolve(theImage);
-                        }
-                        catch (Exception e) {
-                            prom.Reject(new Exception(String.Format("Texture conversion failed. handle={0}. e={1}", textureHandle, e)));
-                        }
-                    });
-                }
-            }
-            return prom;
         }
 
         // Pass over all the converted entities and sort into types of meshes.
@@ -802,70 +669,10 @@ namespace org.herbal3d.BasilOS {
             // foreach (var faceInfo in ep.faces.Values) {
             ep.faces.ForEach(faceInfo => {
                 if (faceInfo.faceImage != null) {
-                    string texFilename = faceInfo.imageFilename;
-                    if (!File.Exists(texFilename)) {
-                        Image texImage = faceInfo.faceImage;
-                        if (m_params.ResizeImagesWithAlpha || !faceInfo.hasAlpha) {
-                            // For unknown reasons, the resizer does not handle transparency.
-                            // When that problem is solved, remove this 'if'.
-                            texImage = ConstrainTextureSize(faceInfo.faceImage);
-                        }
-                        try {
-                            /*
-                            using (Bitmap textureBitmap = new Bitmap(texImage.Width, texImage.Height,
-                                        System.Drawing.Imaging.PixelFormat.Format32bppArgb)) {
-                                // convert the raw image into a channeled image
-                                using (Graphics graphics = Graphics.FromImage(textureBitmap)) {
-                                    graphics.DrawImage(texImage, 0, 0);
-                                    graphics.Flush();
-                                }
-                                // Write out the converted image as PNG
-                                textureBitmap.Save(texFilename, System.Drawing.Imaging.ImageFormat.Png);
-                            }
-                            */
-                            // m_log.DebugFormat("{0} WriteOutImageForEP: id={1}, hasAlpha={2}, format={3}",
-                            //                 LogHeader, faceInfo.textureID, faceInfo.hasAlpha, texImage.PixelFormat);
-                            texImage.Save(texFilename, ImageFormat.Png);
-                        }
-                        catch (Exception e) {
-                            m_log.ErrorFormat("{0} FAILED PNG FILE CREATION: {0}", e);
-                        }
-                    }
+                    faceInfo.persist.WriteImage(faceInfo.faceImage);
                 }
             });
         }
-
-        // If the image is larger than a max, resize the image.
-        // Not sure why, but transparency is lost in this conversion.
-        private Image ConstrainTextureSize(Image inImage) {
-            int size = m_params.MaxTextureSize;
-            if (inImage.Width > size || inImage.Height > size) {
-                int sizeW = size;
-                int sizeH = size;
-                /*
-                if (inImage.Width > size) {
-                    sizeH = (int)(inImage.Height * (size / inImage.Width));
-                }
-                else {
-                    sizeW = (int)(inImage.Width * (size / inImage.Height));
-                }
-                */
-                m_log.DebugFormat("{0} starting resize of image from {1}/{2} to {3}/{4}",
-                            LogHeader, inImage.Width, inImage.Height, sizeW, sizeH);
-                Image thumbNail = new Bitmap(sizeW, sizeH, inImage.PixelFormat);
-                using (Graphics g = Graphics.FromImage(thumbNail)) {
-                    g.CompositingQuality = CompositingQuality.HighQuality;
-                    g.SmoothingMode = SmoothingMode.HighQuality;
-                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                    Rectangle rect = new Rectangle(0, 0, sizeW, sizeH);
-                    g.DrawImage(inImage, rect);
-                }
-                m_log.DebugFormat("{0} completed resize of image from {1}/{2}", LogHeader, inImage.Width, inImage.Height);
-                return thumbNail;
-            }
-            return inImage;
-        }
-
         // Build the GLTF structures from the reorganized scene
         // private Gltf ConvertReorgSceneToGltf(ReorganizedScene reorgScene) {
         private Gltf ConvertReorgSceneToGltf(EntityGroupList groupsToConvert, string sceneName) {
@@ -883,37 +690,10 @@ namespace org.herbal3d.BasilOS {
             }
 
             // After adding all the meshes as nodes, create all the dependent structures
-            gltf.BuildAccessorsAndBuffers(CreateAssetURI, m_params);
+            gltf.BuildAccessorsAndBuffers(new BasilPersist(Gltf.MakeAssetURITypeImage, "", _context), _context);
 
             m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Returniing gltf", LogHeader);
             return gltf;
-        }
-
-        // When calling into the Gltf routines to build structures, there need to be URI's 
-        //     added to the structures. This routine is called to generate the storage filename
-        //     and reference URI for the item 'info' of type 'type'.
-        // 'info' is what the asset wants to be called: a uuid for textures, mesh name, or buffer name.
-        private void CreateAssetURI(string type, string info, out string filename, out string uri) {
-            string fname = "";
-            string uuri = "";
-
-            string targetDir = ResolveAndCreateDir(m_params.GltfTargetDir);
-            if (targetDir != null) {
-                if (type == Gltf.MakeAssetURITypeImage) {
-                    uuri = m_params.URIBase + info + ".png";
-                    fname = JoinFilePieces(targetDir, info + ".png");
-                }
-                if (type == Gltf.MakeAssetURITypeBuff) {
-                    uuri = m_params.URIBase + m_scene.Name + "_" + info + ".bin";
-                    fname = JoinFilePieces(targetDir, m_scene.Name + "_" + info + ".bin");
-                }
-                if (type == Gltf.MakeAssetURITypeMesh) {
-                    uuri = m_params.URIBase + info + ".mesh";
-                    fname = JoinFilePieces(targetDir, info + ".mesh");
-                }
-            }
-            filename = fname;
-            uri = uuri;
         }
 
         private void AddNodeToGltf(Gltf gltf, GltfScene containingScene, EntityGroup eg) {
@@ -1125,10 +905,10 @@ namespace org.herbal3d.BasilOS {
         /// <param name="pTargetDir">Directory to write the .gltf file into.
         ///              Created if it does not exist</param>
         private void ExportSceneAsGltf(Gltf gltf, string regionName, string pTargetDir) {
-            string targetDir = ResolveAndCreateDir(pTargetDir);
+            string targetDir = BasilPersist.ResolveAndCreateDir(pTargetDir);
 
             if (targetDir != null) {
-                string gltfFilename = JoinFilePieces(targetDir, regionName + ".gltf");
+                string gltfFilename = BasilPersist.JoinFilePieces(targetDir, regionName + ".gltf");
                 using (StreamWriter outt = File.CreateText(gltfFilename)) {
                     gltf.ToJSON(outt);
                 }
@@ -1136,45 +916,5 @@ namespace org.herbal3d.BasilOS {
             }
         }
 
-        /// <summary>
-        /// Turn the passed relative path name into an absolute directory path and
-        /// create the directory if it does not exist.
-        /// </summary>
-        /// <param name="pDir">Absolute or relative path to a directory</param>
-        /// <returns>Absolute path to directory or 'null' if cannot resolve or create the directory</returns>
-        private string ResolveAndCreateDir(string pDir) {
-            string absDir = null;
-            try {
-                absDir = Path.GetFullPath(pDir);
-                if (!Directory.Exists(absDir)) {
-                    Directory.CreateDirectory(absDir);
-                }
-            }
-            catch (Exception e) {
-                m_log.ErrorFormat("{0} Failed creation of GLTF file directory. dir={1}, e: {2}",
-                            LogHeader, absDir, e);
-                return null;
-            }
-            return absDir;
-        }
-
-        /// <summary>
-        /// Combine two filename pieces so there is one directory separator between.
-        /// This replaces System.IO.Path.Combine which has the nasty feature that it
-        /// ignores the first string if the second begins with a separator.
-        /// It assumes that it's root and you don't want to join. Wish they had asked me.
-        /// </summary>
-        /// <param name="first"></param>
-        /// <param name="last"></param>
-        /// <returns></returns>
-        public static string JoinFilePieces(string first, string last) {
-            string separator = "" + Path.DirectorySeparatorChar;
-            // string separator = "/";     // both .NET and mono are happy with forward slash
-            string f = first;
-            string l = last;
-            while (f.EndsWith(separator)) f = f.Substring(f.Length - 1);
-            while (l.StartsWith(separator)) l = l.Substring(1, l.Length - 1);
-            return f + separator + l;
-        }
     }
 }

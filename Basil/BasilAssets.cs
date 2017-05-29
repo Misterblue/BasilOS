@@ -32,7 +32,7 @@ using OpenMetaverse.Imaging;
 namespace org.herbal3d.BasilOS {
 
     // A Promise based interface to the asset fetcher
-    public abstract class IAssetFetcherWrapper : IDisposable {
+    public abstract class IAssetFetcher : IDisposable {
         public abstract IPromise<OMVA.AssetTexture> FetchTexture(EntityHandle handle);
         public abstract IPromise<Image> FetchTextureAsImage(EntityHandle handle);
         public abstract IPromise<byte[]> FetchRawAsset(EntityHandle handle);
@@ -40,7 +40,7 @@ namespace org.herbal3d.BasilOS {
     }
 
     // Fetch an asset from  the OpenSimulator asset system
-    public class OSAssetFetcher : IAssetFetcherWrapper {
+    public class OSAssetFetcher : IAssetFetcher {
         private ILog m_log;
         private string LogHeader = "[OSAssetFetcher]";
 
