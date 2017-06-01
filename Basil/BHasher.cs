@@ -18,6 +18,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Security.Cryptography;
+
 
 namespace org.herbal3d.BasilOS {
 
@@ -37,7 +39,7 @@ namespace org.herbal3d.BasilOS {
     // Note that BHash has IEquatable and IComparible so it can be used in Dictionaries
     //     and sorted Lists.
 
-    // A create a BHasher, do a bunch of 'Add's, then Finish().
+    // Create a BHasher, do a bunch of 'Add's, then Finish().
     public interface IBHasher {
         // Create a new object implementing BHasher, then Add values to be hashed
         void Add(byte c);
@@ -50,45 +52,44 @@ namespace org.herbal3d.BasilOS {
         // Finish and add byte array. 
         // If no Add's before, can do the hashing without copying the byte array
         BHash Finish(byte[] c);
+        BHash Finish(byte[] c, int offset, int len);
+        BHash Hash();
     }
 
     // ======================================================================
+    // BHasher computes a BHash which holds the hash value after Finish() is called.
     public abstract class BHash : IEquatable<BHash>, IComparable<BHash> {
         public abstract override string ToString();
-        public abstract byte[] ToByte();
-        public abstract int ToInt32();  // returns the hash of the hash if not int based hash
-        public abstract override int GetHashCode();
+        public abstract byte[] ToBytes();
+        public abstract ulong ToULong();  // returns the hash of the hash if not int based hash
         public abstract bool Equals(BHash other);
         public abstract int CompareTo(BHash obj);
     }
 
     // A hash that is an Int32
-    public class BHashInt : BHash {
-        private int hash;
-        public BHashInt() {
+    public class BHashULong : BHash {
+        private ulong hash;
+        public BHashULong() {
             hash = 0;
         }
-        public BHashInt(int initialHash) {
+        public BHashULong(ulong initialHash) {
             hash = initialHash;
         }
         public override string ToString() {
             return hash.ToString();
         }
-        public override byte[] ToByte() {
+        public override byte[] ToBytes() {
             return BitConverter.GetBytes(hash);
         }
-        public override int ToInt32() {
-            return hash;
-        }
-        public override int GetHashCode() {
+        public override ulong ToULong() {
             return hash;
         }
         public override bool Equals(BHash other) {
             bool ret = false;
             if (other != null) {
-                BHash bh = other as BHashInt;
+                BHash bh = other as BHashULong;
                 if (bh != null) {
-                    ret = hash.Equals(bh.ToInt32());
+                    ret = hash.Equals(bh.ToULong());
                 }
             }
             return ret;
@@ -96,9 +97,9 @@ namespace org.herbal3d.BasilOS {
         public override int CompareTo(BHash other) {
             int ret = 1;
             if (other != null) {
-                BHash bh = other as BHashInt;
+                BHash bh = other as BHashULong;
                 if (bh != null) {
-                    ret = hash.CompareTo(bh.ToInt32());
+                    ret = hash.CompareTo(bh.ToULong());
                 }
             }
             return ret;
@@ -115,23 +116,24 @@ namespace org.herbal3d.BasilOS {
             hash = initialHash;
         }
         public override string ToString() {
-            return hash.ToString();
+            // code found in FSAssetService -- is removing hyphen the right thing to do?
+            // return BitConverter.ToString(hash).Replace("-", String.Empty);
+            // Decided to leave removing the hyphen to the caller -- depends on what they
+            //     are using the string for.
+            return BitConverter.ToString(hash);
         }
-        public override byte[] ToByte() {
+        public override byte[] ToBytes() {
             return hash;
         }
-        public override int ToInt32() {
-            return hash.GetHashCode();
-        }
-        public override int GetHashCode() {
-            return hash.GetHashCode();
+        public override ulong ToULong() {
+            return (ulong)hash.GetHashCode();
         }
         public override bool Equals(BHash other) {
             bool ret = false;
             if (other != null) {
                 BHash bh = other as BHashBytes;
                 if (bh != null) {
-                    ret = hash.Equals(bh.ToInt32());
+                    ret = hash.Equals(bh.ToBytes());
                 }
             }
             return ret;
@@ -141,7 +143,7 @@ namespace org.herbal3d.BasilOS {
             if (other != null) {
                 BHash bh = other as BHashBytes;
                 if (bh != null) {
-                    byte[] otherb = bh.ToByte();
+                    byte[] otherb = bh.ToBytes();
                     if (hash.Length != otherb.Length) {
                         ret = hash.Length.CompareTo(otherb.Length);
                     }
@@ -160,57 +162,182 @@ namespace org.herbal3d.BasilOS {
 
     // ======================================================================
     // ======================================================================
-    public abstract class BHasher {
-        protected byte[] building;
-        protected int buildingLoc;
-
+    public abstract class BHasher
+    {
         public BHasher() {
-            building = new byte[1000];
-            buildingLoc = 0;
-        }
-
-        // Add the given number of bytes to the byte array being built
-        protected void AddBytes(byte[] addition, int len) {
         }
     }
 
-    // ======================================================================
-    public class BHasherSHA256 : BHasher, IBHasher {
-        public BHasherSHA256() : base() {
+    // A hasher that builds up a buffer of bytes ('building') and then hashes over same
+    public abstract class BHasherBytes : BHasher, IBHasher {
+        protected byte[] building;
+        protected int buildingLoc;
+        protected int allocStep = 1024;
+
+        public BHasherBytes() : base() {
+            building = new byte[allocStep];
+            buildingLoc = 0;
         }
 
         public void Add(byte c) {
             byte[] bytes = BitConverter.GetBytes(c);
-            AddBytes(bytes, bytes.Length);
+            AddBytes(bytes, 0, bytes.Length);
         }
 
         public void Add(ushort c) {
             byte[] bytes = BitConverter.GetBytes(c);
-            AddBytes(bytes, bytes.Length);
+            AddBytes(bytes, 0, bytes.Length);
         }
 
         public void Add(uint c) {
             byte[] bytes = BitConverter.GetBytes(c);
-            AddBytes(bytes, bytes.Length);
+            AddBytes(bytes, 0, bytes.Length);
         }
 
         public void Add(ulong c) {
             byte[] bytes = BitConverter.GetBytes(c);
-            AddBytes(bytes, bytes.Length);
+            AddBytes(bytes, 0, bytes.Length);
         }
 
         public void Add(byte[] c) {
-            AddBytes(c, c.Length);
+            AddBytes(c, 0, c.Length);
         }
 
-        public BHash Finish() {
-            throw new NotImplementedException();
+        // Implemented by derived class
+        public abstract BHash Finish();
+
+        // Helper function for simple byte array
+        public virtual BHash Finish(byte[] c) {
+            return this.Finish(c, 0, c.Length);
         }
 
-        public BHash Finish(byte[] c) {
-            throw new NotImplementedException();
+        // Implemented by derived class
+        public abstract BHash Finish(byte[] c, int offset, int len);
+
+        // Implemented by derived class
+        public abstract BHash Hash();
+
+        // Add the given number of bytes to the byte array being built
+        protected void AddBytes(byte[] addition, int offset, int len) {
+            if (offset + len > addition.Length) {
+                throw new ArgumentException(String.Format("BHasherBytes.AddBytes: addition parameters off end of array. addition.len={0}, offset={1}, len={2}",
+                                addition.Length, offset, len));
+            }
+            if (len > 0) {
+                if (buildingLoc + len > building.Length) {
+                    // New data requires expanding the data buffer
+                    byte[] newBuilding = new byte[buildingLoc + len + allocStep];
+                    Buffer.BlockCopy(building, 0, newBuilding, 0, buildingLoc);
+                    building = newBuilding;
+                }
+                Buffer.BlockCopy(addition, offset, building, buildingLoc, len);
+                buildingLoc += len;
+            }
         }
     }
 
+    // ======================================================================
+    // ULong hash code taken from Meshmerizer
+    public class BHasherMdjb2 : BHasherBytes, IBHasher {
+        BHashULong hash = new BHashULong();
 
+        public BHasherMdjb2() : base() {
+        }
+
+        public override BHash Finish() {
+            hash = new BHashULong(ComputeMdjb2Hash(building, 0, buildingLoc));
+            return hash;
+        }
+
+        public override BHash Finish(byte[] c, int offset, int len) {
+            if (building.Length > 0) {
+                AddBytes(c, offset, len);
+                hash = new BHashULong(ComputeMdjb2Hash(building, 0, buildingLoc));
+            }
+            else {
+                // if no 'Add's were done, don't copy the input data
+                hash = new BHashULong(ComputeMdjb2Hash(c, offset, len));
+            }
+            return hash;
+        }
+
+        private ulong ComputeMdjb2Hash(byte[] c, int offset, int len) {
+            ulong h = 5381;
+            for (int ii = offset; ii < offset+len; ii++) {
+                h = ((h << 5) + h) + (ulong)(c[ii]);
+            }
+            return h;
+        }
+
+        public override BHash Hash() {
+            return hash;
+        }
+    }
+
+    // ======================================================================
+    public class BHasherMD5 : BHasherBytes, IBHasher {
+        BHashBytes hash = new BHashBytes();
+
+        public BHasherMD5() : base() {
+        }
+
+        public override BHash Finish() {
+            MD5 md5 = MD5.Create();
+            hash = new BHashBytes(md5.ComputeHash(building, 0, buildingLoc));
+            return hash;
+        }
+
+        public override BHash Finish(byte[] c) {
+            return this.Finish(c, 0, c.Length);
+        }
+        public override BHash Finish(byte[] c, int offset, int len) {
+            MD5 md5 = MD5.Create();
+            if (building.Length > 0) {
+                AddBytes(c, offset, len);
+                hash = new BHashBytes(md5.ComputeHash(building, 0, buildingLoc));
+            }
+            else {
+                // if no 'Add's were done, don't copy the input data
+                hash = new BHashBytes(md5.ComputeHash(c, offset, len));
+            }
+            return hash;
+        }
+
+        public override BHash Hash() {
+            return hash;
+        }
+    }
+
+    // ======================================================================
+    public class BHasherSHA256 : BHasherBytes, IBHasher {
+        BHashBytes hash = new BHashBytes();
+
+        public BHasherSHA256() : base() {
+        }
+
+        public override BHash Finish() {
+            using (SHA256CryptoServiceProvider SHA256 = new SHA256CryptoServiceProvider()) {
+                hash = new BHashBytes(SHA256.ComputeHash(building, 0, buildingLoc));
+            }
+            return hash;
+        }
+
+        public override BHash Finish(byte[] c, int offset, int len) {
+            using (SHA256CryptoServiceProvider SHA256 = new SHA256CryptoServiceProvider()) {
+                if (building.Length > 0) {
+                    AddBytes(c, offset, len);
+                    hash = new BHashBytes(SHA256.ComputeHash(building, 0, buildingLoc));
+                }
+                else {
+                    // if no 'Add's were done, don't copy the input data
+                    hash = new BHashBytes(SHA256.ComputeHash(c, offset, len));
+                }
+            }
+            return hash;
+        }
+
+        public override BHash Hash() {
+            return hash;
+        }
+    }
 }

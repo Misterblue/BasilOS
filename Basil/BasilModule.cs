@@ -44,11 +44,13 @@ namespace org.herbal3d.BasilOS {
 
     // Class passed around for global context for this region module instance
     public class BasilModuleContext {
+        public IConfig sysConfig;
         public BasilParams parms;
         public Scene scene;
         public ILog log;
 
-        public BasilModuleContext(BasilParams pParms, ILog pLog) {
+        public BasilModuleContext(IConfig pSysConfig, BasilParams pParms, ILog pLog) {
+            sysConfig = pSysConfig;
             parms = pParms;
             log = pLog;
             scene = null;
@@ -57,16 +59,16 @@ namespace org.herbal3d.BasilOS {
 
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "BasilModule")]
     public class BasilModule : INonSharedRegionModule {
-        private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-        private static String LogHeader = "[Basil]";
+        private static readonly ILog _log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static String _logHeader = "[Basil]";
 
-        private BasilParams m_params;
-        private IConfig m_sysConfig = null;
+        private BasilParams _params;
+        private IConfig _sysConfig = null;
 
         private BasilModuleContext _context;
 
-        private OMV.Vector3 m_regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
-        private OMV.Vector3 m_regionCenter = new OMV.Vector3(Constants.RegionSize/2, Constants.RegionSize/2, 0f);
+        private OMV.Vector3 _regionDimensions = new OMV.Vector3(Constants.RegionSize, Constants.RegionSize, 10000f);
+        private OMV.Vector3 _regionCenter = new OMV.Vector3(Constants.RegionSize/2, Constants.RegionSize/2, 0f);
 
         #region INonSharedRegionNodule
         // IRegionModuleBase.Name()
@@ -80,51 +82,51 @@ namespace org.herbal3d.BasilOS {
         public void Initialise(IConfigSource source) {
 
             // Load all the parameters
-            m_params = new BasilParams();
+            _params = new BasilParams();
             // Overlay the default parameter values with the settings in the INI file
-            m_sysConfig = source.Configs["Basil"];
-            if (m_sysConfig != null) {
-                m_params.SetParameterConfigurationValues(m_sysConfig);
+            _sysConfig = source.Configs["Basil"];
+            if (_sysConfig != null) {
+                _params.SetParameterConfigurationValues(_sysConfig);
             }
 
-            if (m_params.Enabled) {
-                m_log.InfoFormat("{0} Enabled", LogHeader);
+            if (_params.Enabled) {
+                _log.InfoFormat("{0} Enabled", _logHeader);
             }
 
-            _context = new BasilModuleContext(m_params, m_log);
+            _context = new BasilModuleContext(_sysConfig, _params, _log);
         }
         
         // IRegionModuleBase.Close()
         // Called when simulator is being shutdown
         public void Close() {
-            m_log.DebugFormat("{0} Close", LogHeader);
+            _log.DebugFormat("{0} Close", _logHeader);
         }
         
         // IRegionModuleBase.AddRegion()
         // Called once for a NonSharedRegionModule when the region is initialized
         public void AddRegion(Scene scene) {
-            if (m_params.Enabled) {
+            if (_params.Enabled) {
                 _context.scene = scene;
-                m_regionDimensions.X = _context.scene.RegionInfo.RegionSizeX;
-                m_regionDimensions.Y = _context.scene.RegionInfo.RegionSizeY;
-                m_regionCenter.X = m_regionDimensions.X / 2f;
-                m_regionCenter.Y = m_regionDimensions.Y / 2f;
+                _regionDimensions.X = _context.scene.RegionInfo.RegionSizeX;
+                _regionDimensions.Y = _context.scene.RegionInfo.RegionSizeY;
+                _regionCenter.X = _regionDimensions.X / 2f;
+                _regionCenter.Y = _regionDimensions.Y / 2f;
 
-                m_log.DebugFormat("{0} REGION {1} ADDED", LogHeader, scene.RegionInfo.RegionName);
+                _log.DebugFormat("{0} REGION {1} ADDED", _logHeader, scene.RegionInfo.RegionName);
             }
         }
         
         // IRegionModuleBase.RemoveRegion()
         // Called once for a NonSharedRegionModule when the region is being unloaded
         public void RemoveRegion(Scene scene) {
-            m_log.DebugFormat("{0} REGION {1} REMOVED", LogHeader, scene.RegionInfo.RegionName);
+            _log.DebugFormat("{0} REGION {1} REMOVED", _logHeader, scene.RegionInfo.RegionName);
         }        
         
         // IRegionModuleBase.RegionLoaded()
         // Called once for a NonSharedRegionModule when the region is completed loading
         public void RegionLoaded(Scene scene) {
-            if (m_params.Enabled) {
-                m_log.DebugFormat("{0} REGION {1} LOADED", LogHeader, scene.RegionInfo.RegionName);
+            if (_params.Enabled) {
+                _log.DebugFormat("{0} REGION {1} LOADED", _logHeader, scene.RegionInfo.RegionName);
                 AddConsoleCommands();
             }
         }
@@ -175,7 +177,7 @@ namespace org.herbal3d.BasilOS {
 
             if (SceneManager.Instance == null || SceneManager.Instance.CurrentScene == null)
             {
-                m_log.Error("Error: no region selected. Use 'change region' to select a region.");
+                _log.Error("Error: no region selected. Use 'change region' to select a region.");
                 return;
             }
 
@@ -184,20 +186,20 @@ namespace org.herbal3d.BasilOS {
 
             if (SceneManager.Instance.CurrentScene.Name == _context.scene.Name) {
 
-                using (BasilStats stats = new BasilStats(_context.scene, m_log)) {
+                using (BasilStats stats = new BasilStats(_context.scene, _log)) {
 
-                    using (IAssetFetcher assetFetcher = new OSAssetFetcher(_context.scene, m_log, m_params)) {
+                    using (IAssetFetcher assetFetcher = new OSAssetFetcher(_context.scene, _log, _params)) {
 
                         try {
 
                             ConvertEntitiesToMeshes(assetFetcher, stats)
                                 .Catch(e => {
-                                    m_log.ErrorFormat("{0} exception in ConvertEntitiesToMeshes: {1}", LogHeader, e);
+                                    _log.ErrorFormat("{0} exception in ConvertEntitiesToMeshes: {1}", _logHeader, e);
                                 })
                                 .Then(allSOGs => {
                                     // Everything has been converted into meshes and available in 'allSOGs'.
-                                    m_log.DebugFormat("{0} Converted {1} scene entities", LogHeader, allSOGs.Count);
-                                    if (m_params.LogDetailedEntityInfo) {
+                                    _log.DebugFormat("{0} Converted {1} scene entities", _logHeader, allSOGs.Count);
+                                    if (_params.LogDetailedEntityInfo) {
                                         stats.DumpDetailed(allSOGs);
                                     }
 
@@ -208,12 +210,12 @@ namespace org.herbal3d.BasilOS {
 
                                     // Creates reorgScene.rebuiltFaceEntities from reorgScene.similarFaces
                                     //     by repositioning the vertices in the shared meshes so they act as one mesh
-                                    if (m_params.MergeStaticMeshes) {
+                                    if (_params.MergeStaticMeshes) {
                                         try {
                                             reorgScene.rebuiltFaceEntities = ConvertEntitiesIntoSharedMaterialMeshes(reorgScene.staticEntities);
                                         }
                                         catch (Exception e) {
-                                            m_log.ErrorFormat("{0} Exception calling ConvertEntitiesIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                            _log.ErrorFormat("{0} Exception calling ConvertEntitiesIntoSharedMaterialMeshes: {1}", _logHeader, e);
                                         }
                                     }
                                     else {
@@ -221,7 +223,7 @@ namespace org.herbal3d.BasilOS {
                                         reorgScene.rebuiltFaceEntities = reorgScene.staticEntities;
                                     }
 
-                                    if (m_params.MergeNonStaticMeshes) {
+                                    if (_params.MergeNonStaticMeshes) {
                                         try {
                                             // Repack all the non-static entities
                                             // The non-static entities are packaged so they can move as a group.
@@ -233,7 +235,7 @@ namespace org.herbal3d.BasilOS {
                                                 );
                                         }
                                         catch (Exception e) {
-                                            m_log.ErrorFormat("{0} Exception calling ConvertEntityGroupIntoSharedMaterialMeshes: {1}", LogHeader, e);
+                                            _log.ErrorFormat("{0} Exception calling ConvertEntityGroupIntoSharedMaterialMeshes: {1}", _logHeader, e);
                                         }
                                     }
                                     else {
@@ -242,9 +244,9 @@ namespace org.herbal3d.BasilOS {
                                     }
 
                                     // Scan all the entities and extract statistics
-                                    if (m_params.LogConversionStats) {
+                                    if (_params.LogConversionStats) {
                                         stats.ExtractStatistics(reorgScene);
-                                        stats.LogAll(LogHeader);
+                                        stats.LogAll(_logHeader);
                                     }
 
                                     // The whole scene is now in reorgScene.nonStaticEntities and reorgScene.rebuiltFaceEntities
@@ -261,37 +263,37 @@ namespace org.herbal3d.BasilOS {
                                         gltf = ConvertReorgSceneToGltf(groupsToConvert, reorgScene.regionID);
                                     }
                                     catch (Exception e) {
-                                        m_log.ErrorFormat("{0} Exception calling ConvertReorgSceneToGltf: {1}", LogHeader, e);
+                                        _log.ErrorFormat("{0} Exception calling ConvertReorgSceneToGltf: {1}", _logHeader, e);
                                     }
 
                                     // Scan through all the textures and convert them into PNGs for the Gltf scene
                                     try {
-                                        if (m_params.ExportTextures) {
-                                            m_log.DebugFormat("{0} exporting textures", LogHeader);
+                                        if (_params.ExportTextures) {
+                                            _log.DebugFormat("{0} exporting textures", _logHeader);
                                             WriteOutImages(reorgScene);
                                         }
                                     }
                                     catch (Exception e) {
-                                        m_log.ErrorFormat("{0} Exception calling WriteOutImages: {1}", LogHeader, e);
+                                        _log.ErrorFormat("{0} Exception calling WriteOutImages: {1}", _logHeader, e);
                                     }
 
                                     // Write out the Gltf information
                                     if (gltf != null) {
                                         try {
-                                            ExportSceneAsGltf(gltf, _context.scene.Name, m_params.GltfTargetDir);
+                                            ExportSceneAsGltf(gltf, _context.scene.Name, _params.GltfTargetDir);
                                         }
                                         catch (Exception e) {
-                                            m_log.ErrorFormat("{0} Exception calling ExportSceneAsGltf: {1}", LogHeader, e);
+                                            _log.ErrorFormat("{0} Exception calling ExportSceneAsGltf: {1}", _logHeader, e);
                                         }
                                     }
                                     else {
-                                        m_log.InfoFormat("{0} Not exporting GLTF files because conversion failed", LogHeader);
+                                        _log.InfoFormat("{0} Not exporting GLTF files because conversion failed", _logHeader);
                                     }
                                 })
                             ;
                         }
                         catch (Exception e) {
-                            m_log.ErrorFormat("{0} Exception parocessing SOGs: {1}", LogHeader, e);
+                            _log.ErrorFormat("{0} Exception parocessing SOGs: {1}", _logHeader, e);
                         }
                     }
                 }
@@ -303,7 +305,7 @@ namespace org.herbal3d.BasilOS {
         private IPromise<EntityGroupList> ConvertEntitiesToMeshes(IAssetFetcher assetFetcher, BasilStats stats) {
             Promise<EntityGroupList> prom = new Promise<EntityGroupList>();
 
-            using (PrimToMesh assetMesher = new PrimToMesh(m_log)) {
+            using (PrimToMesh assetMesher = new PrimToMesh(_log)) {
 
                 BConverterOS converter = new BConverterOS(assetFetcher, assetMesher, _context, stats);
 
@@ -313,117 +315,33 @@ namespace org.herbal3d.BasilOS {
                     })
                 )
                 .Catch(e => {
-                    m_log.ErrorFormat("{0} Error converting SOG. {1}", LogHeader, e);
+                    _log.ErrorFormat("{0} Error converting SOG. {1}", _logHeader, e);
                     prom.Reject(new Exception("Failed to convert SOG: " + e.ToString()));
                 })
                 .Done(eg => {
                     EntityGroupList egl = new EntityGroupList(eg.ToList());
 
                     // If terrain is requested, add it to the list of scene entities
-                    if (m_params.AddTerrainMesh) {
-                        m_log.DebugFormat("{0} ConvertEntitiesToMeshes: building and adding terrain", LogHeader);
+                    if (_params.AddTerrainMesh) {
+                        _log.DebugFormat("{0} ConvertEntitiesToMeshes: building and adding terrain", _logHeader);
                         try {
-                            var ePrimGroup = CreateTerrainMesh(_context.scene, assetMesher, assetFetcher, stats);
-                            m_log.DebugFormat("{0} ConvertEntitiesToMeshes: completed creation. Adding to mesh set", LogHeader);
+                            var ePrimGroup = BasilTerrain.CreateTerrainMesh(_context, assetMesher, assetFetcher);
+                            _log.DebugFormat("{0} ConvertEntitiesToMeshes: completed creation. Adding to mesh set", _logHeader);
                             egl.Add(ePrimGroup);
                             prom.Resolve(egl);
                         }
                         catch (Exception e) {
-                            m_log.ErrorFormat("{0} Error creating terrain: {1}", LogHeader, e);
+                            _log.ErrorFormat("{0} Error creating terrain: {1}", _logHeader, e);
                             prom.Reject(new Exception("Failed to create terrain: " + e.ToString()));
                         }
                     }
                     else {
-                        m_log.DebugFormat("{0} ConvertEntitiesToMeshes: not creating terrain. Just resolving", LogHeader);
+                        _log.DebugFormat("{0} ConvertEntitiesToMeshes: not creating terrain. Just resolving", _logHeader);
                         prom.Resolve(egl);
                     }
                 });
             }
-
             return prom;
-        }
-
-        // Create a mesh for the terrain of the current scene
-        private EntityGroup CreateTerrainMesh(Scene pScene, PrimToMesh assetMesher,
-                            IAssetFetcher assetFetcher, BasilStats stats) {
-
-            int XSize = pScene.Heightmap.Width;
-            int YSize = pScene.Heightmap.Height;
-
-            float[,] heightMap = new float[XSize, YSize];
-            if (m_params.HalfRezTerrain) {
-                m_log.DebugFormat("{0}: CreateTerrainMesh. creating half sized terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
-                // Half resolution mesh that approximates the heightmap
-                heightMap = new float[XSize/2, YSize/2];
-                for (int xx = 1; xx < XSize; xx += 2) {
-                    for (int yy = 1; yy < YSize; yy += 2) {
-                        float here = pScene.Heightmap.GetHeightAtXYZ(xx+0, yy+0, 26);
-                        float ll = pScene.Heightmap.GetHeightAtXYZ(xx-1, yy-1, 26);
-                        float lr = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy-1, 26);
-                        float ul = pScene.Heightmap.GetHeightAtXYZ(xx-1, yy+1, 26);
-                        float ur = pScene.Heightmap.GetHeightAtXYZ(xx+1, yy+1, 26);
-                        heightMap[(xx - 1) / 2, (yy - 1) / 2] = (here + ll + lr + ul + ur) / 5;
-                    }
-                }
-            }
-            else {
-                m_log.DebugFormat("{0}: CreateTerrainMesh. creating terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
-                heightMap = new float[XSize, YSize];
-                for (int xx = 0; xx < XSize; xx++) {
-                    for (int yy = 0; yy < YSize; yy++) {
-                        heightMap[xx, yy] = pScene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
-                    }
-                }
-            }
-
-            m_log.DebugFormat("{0}: CreateTerrainMesh. calling MeshFromHeightMap", LogHeader);
-            ExtendedPrimGroup epg = assetMesher.MeshFromHeightMap(heightMap, (int)_context.scene.RegionInfo.RegionSizeX, (int)_context.scene.RegionInfo.RegionSizeY);
-
-            // Number found in RegionSettings.cs as DEFAULT_TERRAIN_TEXTURE_3
-            OMV.UUID defaultTextureID = new OMV.UUID("179cdabd-398a-9b6b-1391-4dc333ba321f");
-            OMV.Primitive.TextureEntry te = new OMV.Primitive.TextureEntry(defaultTextureID);
-
-            if (m_params.CreateTerrainSplat) {
-                // Use the OpenSim maptile generator to create a texture for the terrain
-                var terrainRenderer = new TexturedMapTileRenderer();
-                terrainRenderer.Initialise(_context.scene, m_sysConfig.ConfigSource);
-
-                var mapbmp = new Bitmap((int)_context.scene.Heightmap.Width, (int)_context.scene.Heightmap.Height,
-                                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-                terrainRenderer.TerrainToBitmap(mapbmp);
-
-                // The built terrain mesh will have one face in the mesh
-                OMVR.Face aFace = epg.primaryExtendePrim.fromOS.facetedMesh.Faces.First();
-                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim, aFace, te.CreateFace(0));
-                fi.textureID = OMV.UUID.Random();
-                fi.faceImage = mapbmp;
-                fi.hasAlpha = false;
-                fi.persist = new BasilPersist(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), _context);
-                epg.primaryExtendePrim.faces.Add(fi);
-            }
-            else {
-                // Fabricate a texture
-                // The built terrain mesh will have one face in the mesh
-                OMVR.Face aFace = epg.primaryExtendePrim.fromOS.facetedMesh.Faces.First();
-                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim, aFace, te.CreateFace(0));
-                fi.textureID = defaultTextureID;
-                assetFetcher.FetchTextureAsImage(new EntityHandle(defaultTextureID))
-                    .Catch(e => {
-                        m_log.ErrorFormat("{0} CreateTerrainMesh: unable to fetch default terrain texture: id={1}: {2}",
-                                    LogHeader, defaultTextureID, e);
-                    })
-                    .Then(theImage => {
-                        // This will happen later so hopefully soon enough for anyone using the image
-                        fi.faceImage = theImage;
-                    });
-                fi.hasAlpha = false;
-                epg.primaryExtendePrim.faces.Add(fi);
-            }
-
-            EntityGroup eg = new EntityGroup();
-            eg.Add(epg);
-
-            return eg;
         }
 
         // Pass over all the converted entities and sort into types of meshes.
@@ -512,7 +430,7 @@ namespace org.herbal3d.BasilOS {
             if (eg.Count == 1 && eg.First().primaryExtendePrim.faces.Count == 1) {
                 // if there is only one entity and that entity has only one mesh, just return
                 //     the thing passed.
-                m_log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: only one face in one entity.", LogHeader);
+                _log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: only one face in one entity.", _logHeader);
                 return eg;
             }
 
@@ -537,7 +455,7 @@ namespace org.herbal3d.BasilOS {
                 }).ToList()
             );
 
-            m_log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: after build: {1}", LogHeader, rebuilt.Stats());
+            _log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: after build: {1}", _logHeader, rebuilt.Stats());
 
             return rebuilt;
         }
@@ -685,7 +603,7 @@ namespace org.herbal3d.BasilOS {
         // Build the GLTF structures from the reorganized scene
         // private Gltf ConvertReorgSceneToGltf(ReorganizedScene reorgScene) {
         private Gltf ConvertReorgSceneToGltf(EntityGroupList groupsToConvert, string sceneName) {
-            Gltf gltf = new Gltf(m_log);
+            Gltf gltf = new Gltf(_log);
 
             GltfScene gScene = new GltfScene(gltf, sceneName);
 
@@ -695,13 +613,13 @@ namespace org.herbal3d.BasilOS {
                 });
             }
             catch (Exception e) {
-                m_log.ErrorFormat("{0} ConvertReorgSceneToGltf: exception converting node: {1}", LogHeader, e);
+                _log.ErrorFormat("{0} ConvertReorgSceneToGltf: exception converting node: {1}", _logHeader, e);
             }
 
             // After adding all the meshes as nodes, create all the dependent structures
             gltf.BuildAccessorsAndBuffers(new BasilPersist(Gltf.MakeAssetURITypeImage, "", _context), _context);
 
-            m_log.DebugFormat("{0} ConvertReorgSceneToGltf. Returniing gltf", LogHeader);
+            _log.DebugFormat("{0} ConvertReorgSceneToGltf. Returniing gltf", _logHeader);
             return gltf;
         }
 
@@ -813,8 +731,8 @@ namespace org.herbal3d.BasilOS {
                 ep.coordSystem = newCoords;
             }
             else {
-                m_log.DebugFormat("{0} FixCoordinates. Not converting coord system. ep={1}",
-                                LogHeader, ep.ID);
+                _log.DebugFormat("{0} FixCoordinates. Not converting coord system. ep={1}",
+                                _logHeader, ep.ID);
             }
         }
 

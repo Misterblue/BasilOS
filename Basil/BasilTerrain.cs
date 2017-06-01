@@ -17,7 +17,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Drawing;
 using System.Text;
+
+using OpenSim.Region.CoreModules.World.LegacyMap;
 
 using OMV = OpenMetaverse;
 using OMVS = OpenMetaverse.StructuredData;
@@ -26,6 +29,92 @@ using OMVR = OpenMetaverse.Rendering;
 
 namespace org.herbal3d.BasilOS {
     public class BasilTerrain {
+
+        private static string LogHeader = "BasilTerrain";
+
+        // Create a mesh for the terrain of the current scene
+        public static EntityGroup CreateTerrainMesh(BasilModuleContext context, PrimToMesh assetMesher,
+                            IAssetFetcher assetFetcher) {
+
+            int XSize = context.scene.Heightmap.Width;
+            int YSize = context.scene.Heightmap.Height;
+
+            float[,] heightMap = new float[XSize, YSize];
+            if (context.parms.HalfRezTerrain) {
+                context.log.DebugFormat("{0}: CreateTerrainMesh. creating half sized terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
+                // Half resolution mesh that approximates the heightmap
+                heightMap = new float[XSize/2, YSize/2];
+                for (int xx = 1; xx < XSize; xx += 2) {
+                    for (int yy = 1; yy < YSize; yy += 2) {
+                        float here = context.scene.Heightmap.GetHeightAtXYZ(xx+0, yy+0, 26);
+                        float ll = context.scene.Heightmap.GetHeightAtXYZ(xx-1, yy-1, 26);
+                        float lr = context.scene.Heightmap.GetHeightAtXYZ(xx+1, yy-1, 26);
+                        float ul = context.scene.Heightmap.GetHeightAtXYZ(xx-1, yy+1, 26);
+                        float ur = context.scene.Heightmap.GetHeightAtXYZ(xx+1, yy+1, 26);
+                        heightMap[(xx - 1) / 2, (yy - 1) / 2] = (here + ll + lr + ul + ur) / 5;
+                    }
+                }
+            }
+            else {
+                context.log.DebugFormat("{0}: CreateTerrainMesh. creating terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
+                heightMap = new float[XSize, YSize];
+                for (int xx = 0; xx < XSize; xx++) {
+                    for (int yy = 0; yy < YSize; yy++) {
+                        heightMap[xx, yy] = context.scene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+                    }
+                }
+            }
+
+            context.log.DebugFormat("{0}: CreateTerrainMesh. calling MeshFromHeightMap", LogHeader);
+            ExtendedPrimGroup epg = assetMesher.MeshFromHeightMap(heightMap,
+                            (int)context.scene.RegionInfo.RegionSizeX, (int)context.scene.RegionInfo.RegionSizeY);
+
+            // Number found in RegionSettings.cs as DEFAULT_TERRAIN_TEXTURE_3
+            OMV.UUID defaultTextureID = new OMV.UUID("179cdabd-398a-9b6b-1391-4dc333ba321f");
+            OMV.Primitive.TextureEntry te = new OMV.Primitive.TextureEntry(defaultTextureID);
+
+            if (context.parms.CreateTerrainSplat) {
+                // Use the OpenSim maptile generator to create a texture for the terrain
+                var terrainRenderer = new TexturedMapTileRenderer();
+                terrainRenderer.Initialise(context.scene, m_sysConfig.ConfigSource);
+
+                var mapbmp = new Bitmap((int)context.scene.Heightmap.Width, (int)context.scene.Heightmap.Height,
+                                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                terrainRenderer.TerrainToBitmap(mapbmp);
+
+                // The built terrain mesh will have one face in the mesh
+                OMVR.Face aFace = epg.primaryExtendePrim.fromOS.facetedMesh.Faces.First();
+                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim, aFace, te.CreateFace(0));
+                fi.textureID = OMV.UUID.Random();
+                fi.faceImage = mapbmp;
+                fi.hasAlpha = false;
+                fi.persist = new BasilPersist(Gltf.MakeAssetURITypeImage, fi.textureID.ToString(), context);
+                epg.primaryExtendePrim.faces.Add(fi);
+            }
+            else {
+                // Fabricate a texture
+                // The built terrain mesh will have one face in the mesh
+                OMVR.Face aFace = epg.primaryExtendePrim.fromOS.facetedMesh.Faces.First();
+                FaceInfo fi = new FaceInfo(0, epg.primaryExtendePrim, aFace, te.CreateFace(0));
+                fi.textureID = defaultTextureID;
+                assetFetcher.FetchTextureAsImage(new EntityHandle(defaultTextureID))
+                    .Catch(e => {
+                        context.log.ErrorFormat("{0} CreateTerrainMesh: unable to fetch default terrain texture: id={1}: {2}",
+                                    LogHeader, defaultTextureID, e);
+                    })
+                    .Then(theImage => {
+                        // This will happen later so hopefully soon enough for anyone using the image
+                        fi.faceImage = theImage;
+                    });
+                fi.hasAlpha = false;
+                epg.primaryExtendePrim.faces.Add(fi);
+            }
+
+            EntityGroup eg = new EntityGroup();
+            eg.Add(epg);
+
+            return eg;
+        }
 
         // A structure to hold vertex information that also includes the index for building indices.
         private struct Vert {

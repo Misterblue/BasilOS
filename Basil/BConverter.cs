@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2017 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,7 +64,7 @@ namespace org.herbal3d.BasilOS {
                     return _mesher.CreateMeshResource(sog, sop, aPrim, _assetFetcher, OMVR.DetailLevel.Highest, _stats);
                 } )
             )
-            // Tweak the parts individually (scale, texturize, ...)
+            // Tweak the converted parts individually (scale, texturize, ...)
             .Then(epgs => {
                 return epgs.Select(epg => {
                     // If scaling is done in the mesh, do it now
@@ -94,7 +94,6 @@ namespace org.herbal3d.BasilOS {
 
         // Convert a SceneObjectPart into an ExtendedPrimGroup
         public IPromise<ExtendedPrimGroup> Convert(SceneObjectGroup sog, SceneObjectPart sop) {
-
             return null;
         }
 
