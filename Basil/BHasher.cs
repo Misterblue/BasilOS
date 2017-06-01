@@ -46,6 +46,7 @@ namespace org.herbal3d.BasilOS {
         void Add(ushort c);
         void Add(uint c);
         void Add(ulong c);
+        void Add(float c);
         void Add(byte[] c);
 
         BHash Finish();
@@ -195,6 +196,11 @@ namespace org.herbal3d.BasilOS {
         }
 
         public void Add(ulong c) {
+            byte[] bytes = BitConverter.GetBytes(c);
+            AddBytes(bytes, 0, bytes.Length);
+        }
+
+        public void Add(float c) {
             byte[] bytes = BitConverter.GetBytes(c);
             AddBytes(bytes, 0, bytes.Length);
         }

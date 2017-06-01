@@ -23,6 +23,8 @@ using System.Text;
 using OpenSim.Region.CoreModules.World.LegacyMap;
 
 using OMV = OpenMetaverse;
+using OpenSim.Region.Framework.Interfaces;
+using OpenSim.Region.Framework.Scenes;
 using OMVS = OpenMetaverse.StructuredData;
 using OMVA = OpenMetaverse.Assets;
 using OMVR = OpenMetaverse.Rendering;
@@ -33,11 +35,13 @@ namespace org.herbal3d.BasilOS {
         private static string LogHeader = "BasilTerrain";
 
         // Create a mesh for the terrain of the current scene
-        public static EntityGroup CreateTerrainMesh(BasilModuleContext context, PrimToMesh assetMesher,
-                            IAssetFetcher assetFetcher) {
+        public static EntityGroup CreateTerrainMesh(BasilModuleContext context,
+                            Scene scene,
+                            PrimToMesh assetMesher, IAssetFetcher assetFetcher) {
 
-            int XSize = context.scene.Heightmap.Width;
-            int YSize = context.scene.Heightmap.Height;
+            ITerrainChannel terrainDef = scene.Heightmap;
+            int XSize = terrainDef.Width;
+            int YSize = terrainDef.Height;
 
             float[,] heightMap = new float[XSize, YSize];
             if (context.parms.HalfRezTerrain) {
@@ -46,11 +50,11 @@ namespace org.herbal3d.BasilOS {
                 heightMap = new float[XSize/2, YSize/2];
                 for (int xx = 1; xx < XSize; xx += 2) {
                     for (int yy = 1; yy < YSize; yy += 2) {
-                        float here = context.scene.Heightmap.GetHeightAtXYZ(xx+0, yy+0, 26);
-                        float ll = context.scene.Heightmap.GetHeightAtXYZ(xx-1, yy-1, 26);
-                        float lr = context.scene.Heightmap.GetHeightAtXYZ(xx+1, yy-1, 26);
-                        float ul = context.scene.Heightmap.GetHeightAtXYZ(xx-1, yy+1, 26);
-                        float ur = context.scene.Heightmap.GetHeightAtXYZ(xx+1, yy+1, 26);
+                        float here = terrainDef.GetHeightAtXYZ(xx+0, yy+0, 26);
+                        float ll = terrainDef.GetHeightAtXYZ(xx-1, yy-1, 26);
+                        float lr = terrainDef.GetHeightAtXYZ(xx+1, yy-1, 26);
+                        float ul = terrainDef.GetHeightAtXYZ(xx-1, yy+1, 26);
+                        float ur = terrainDef.GetHeightAtXYZ(xx+1, yy+1, 26);
                         heightMap[(xx - 1) / 2, (yy - 1) / 2] = (here + ll + lr + ul + ur) / 5;
                     }
                 }
@@ -60,14 +64,14 @@ namespace org.herbal3d.BasilOS {
                 heightMap = new float[XSize, YSize];
                 for (int xx = 0; xx < XSize; xx++) {
                     for (int yy = 0; yy < YSize; yy++) {
-                        heightMap[xx, yy] = context.scene.Heightmap.GetHeightAtXYZ(xx, yy, 26);
+                        heightMap[xx, yy] = terrainDef.GetHeightAtXYZ(xx, yy, 26);
                     }
                 }
             }
 
             context.log.DebugFormat("{0}: CreateTerrainMesh. calling MeshFromHeightMap", LogHeader);
             ExtendedPrimGroup epg = assetMesher.MeshFromHeightMap(heightMap,
-                            (int)context.scene.RegionInfo.RegionSizeX, (int)context.scene.RegionInfo.RegionSizeY);
+                            terrainDef.Width, terrainDef.Height);
 
             // Number found in RegionSettings.cs as DEFAULT_TERRAIN_TEXTURE_3
             OMV.UUID defaultTextureID = new OMV.UUID("179cdabd-398a-9b6b-1391-4dc333ba321f");
@@ -76,9 +80,9 @@ namespace org.herbal3d.BasilOS {
             if (context.parms.CreateTerrainSplat) {
                 // Use the OpenSim maptile generator to create a texture for the terrain
                 var terrainRenderer = new TexturedMapTileRenderer();
-                terrainRenderer.Initialise(context.scene, m_sysConfig.ConfigSource);
+                terrainRenderer.Initialise(scene, context.sysConfig.ConfigSource);
 
-                var mapbmp = new Bitmap((int)context.scene.Heightmap.Width, (int)context.scene.Heightmap.Height,
+                var mapbmp = new Bitmap(terrainDef.Width, terrainDef.Height,
                                         System.Drawing.Imaging.PixelFormat.Format24bppRgb);
                 terrainRenderer.TerrainToBitmap(mapbmp);
 

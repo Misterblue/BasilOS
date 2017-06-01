@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2017 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -130,7 +130,7 @@ namespace org.herbal3d.BasilOS {
                     fname = JoinFilePieces(targetDir, assetInfo + ".png");
                 }
                 if (assetType == Gltf.MakeAssetURITypeBuff) {
-                    fname = JoinFilePieces(targetDir, _context.scene.Name + "_" + assetInfo + ".bin");
+                    fname = JoinFilePieces(targetDir, _context.contextName + "_" + assetInfo + ".bin");
                 }
                 if (assetType == Gltf.MakeAssetURITypeMesh) {
                     fname = JoinFilePieces(targetDir, assetInfo + ".mesh");
@@ -152,7 +152,7 @@ namespace org.herbal3d.BasilOS {
                     uuri = _context.parms.URIBase + assetInfo + ".png";
                 }
                 if (assetType == Gltf.MakeAssetURITypeBuff) {
-                    uuri = _context.parms.URIBase + _context.scene.Name + "_" + assetInfo + ".bin";
+                    uuri = _context.parms.URIBase + _context.contextName + "_" + assetInfo + ".bin";
                 }
                 if (assetType == Gltf.MakeAssetURITypeMesh) {
                     uuri = _context.parms.URIBase + assetInfo + ".mesh";
