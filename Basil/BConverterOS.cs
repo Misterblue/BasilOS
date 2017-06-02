@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2017 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -143,27 +143,9 @@ namespace org.herbal3d.BasilOS {
                             faceInfo.faceImage = null;
                             _context.log.ErrorFormat("{0} UpdateTextureInfo. {1}", _logHeader, e);
                         })
-                        .Then(theImage => {
-                            faceInfo.faceImage = theImage;
-                            if (!faceInfo.hasAlpha && Image.IsAlphaPixelFormat(theImage.PixelFormat)) {
-                                // The image could have alpha values in it
-                                Bitmap bitmapImage = theImage as Bitmap;
-                                if (bitmapImage != null) {
-                                    for (int xx = 0; xx < bitmapImage.Width; xx++) {
-                                        for (int yy = 0; yy < bitmapImage.Height; yy++) {
-                                            if (bitmapImage.GetPixel(xx, yy).A != 255) {
-                                                faceInfo.hasAlpha = true;
-                                                break;
-                                            }
-                                        }
-                                        if (faceInfo.hasAlpha)
-                                            break;
-                                    }
-                                }
-                                else {
-                                    _context.log.DebugFormat("{0} UpdateTextureInfo. Couldn't check for Alpha because image not a bitmap", _logHeader);
-                                }
-                            }
+                        .Then(imgInfo => {
+                            faceInfo.faceImage = imgInfo.image;
+                            faceInfo.hasAlpha |= imgInfo.hasTransprency;
                         });
                 }
             }
@@ -308,7 +290,6 @@ namespace org.herbal3d.BasilOS {
 
                 // Translate all the new vertices to world coordinates then subtract the 'newEp' location.
                 // All rotation is removed to make computation simplier
-
                 OMV.Vector3 worldPos = OMV.Vector3.Zero;
                 OMV.Quaternion worldRot = OMV.Quaternion.Identity;
                 if (ep.fromOS.SOP != null) {
@@ -326,42 +307,10 @@ namespace org.herbal3d.BasilOS {
                     return newVert;
                 }));
                 newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
-
-                /* Old code kept for reference. Remove when above is working
-                if (faceInfo == rootFace) {
-                    // The vertices for the root face don't need translation.
-                    newFace.vertexs.AddRange(faceInfo.vertexs);
-                }
-                else {
-                    // Any other vertex must be moved to be world coords relative to new root
-                    OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
-                    OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
-                    OMV.Quaternion invWorldRot = OMV.Quaternion.Inverse(worldRot);
-                    OMV.Quaternion rotrot = invWorldRot * newEp.rotation;
-                    m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
-                                _logHeader, worldPos, worldRot);
-                    newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
-                        OMVR.Vertex newVert = new OMVR.Vertex();
-                        newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
-                        newVert.Normal = vert.Normal * rotrot;
-                        newVert.TexCoord = vert.TexCoord;
-                        m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
-                                        _logHeader, vert.Position, newVert.Position );
-                        return newVert;
-                    }));
-                }
-                END of old code */
-
-                newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
             });
             // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
             //             _logHeader, similarFaceKvp.Key, newFace.vertexs.Count, newFace.indices.Count);
             return newEp;
-
-            // EntityGroup eg = new EntityGroup();
-            // eg.Add(new ExtendedPrimGroup(newEp));
-
-            // return eg;
         }
 
     }

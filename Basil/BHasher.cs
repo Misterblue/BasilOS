@@ -20,7 +20,6 @@ using System.Linq;
 using System.Text;
 using System.Security.Cryptography;
 
-
 namespace org.herbal3d.BasilOS {
 
     // Basil wrapper for hash functions.
@@ -38,6 +37,10 @@ namespace org.herbal3d.BasilOS {
     //
     // Note that BHash has IEquatable and IComparible so it can be used in Dictionaries
     //     and sorted Lists.
+    //
+    // The C# GetHashCode() method returns an int that is usually based on location.
+    //     Signatures should really be at least 64 bits so these routines generate
+    //     ulong's for hashes and fold them to make the int for GetHashCode().
 
     // Create a BHasher, do a bunch of 'Add's, then Finish().
     public interface IBHasher {
@@ -65,32 +68,34 @@ namespace org.herbal3d.BasilOS {
         public abstract ulong ToULong();  // returns the hash of the hash if not int based hash
         public abstract bool Equals(BHash other);
         public abstract int CompareTo(BHash obj);
+        // public abstract int Compare(BHash x, BHash y);
+        public abstract override int GetHashCode();
     }
 
     // A hash that is an Int32
     public class BHashULong : BHash {
-        private ulong hash;
+        private ulong _hash;
         public BHashULong() {
-            hash = 0;
+            _hash = 0;
         }
         public BHashULong(ulong initialHash) {
-            hash = initialHash;
+            _hash = initialHash;
         }
         public override string ToString() {
-            return hash.ToString();
+            return _hash.ToString();
         }
         public override byte[] ToBytes() {
-            return BitConverter.GetBytes(hash);
+            return BitConverter.GetBytes(_hash);
         }
         public override ulong ToULong() {
-            return hash;
+            return _hash;
         }
         public override bool Equals(BHash other) {
             bool ret = false;
             if (other != null) {
                 BHash bh = other as BHashULong;
                 if (bh != null) {
-                    ret = hash.Equals(bh.ToULong());
+                    ret = _hash.Equals(bh.ToULong());
                 }
             }
             return ret;
@@ -98,43 +103,49 @@ namespace org.herbal3d.BasilOS {
         public override int CompareTo(BHash other) {
             int ret = 1;
             if (other != null) {
-                BHash bh = other as BHashULong;
+                BHashULong bh = other as BHashULong;
                 if (bh != null) {
-                    ret = hash.CompareTo(bh.ToULong());
+                    ret = _hash.CompareTo(bh.ToULong());
                 }
             }
             return ret;
+        }
+        public override int GetHashCode() {
+            ulong upper = (_hash >> 32 )& 0xffffffff;
+            ulong lower = _hash & 0xffffffff;
+            return (int)(upper ^ lower);
         }
     }
 
     // A hash that is an array of bytes
     public class BHashBytes : BHash {
-        private byte[] hash;
+        private byte[] _hash;
+
         public BHashBytes() {
-            hash = new byte[0];
+            _hash = new byte[0];
         }
         public BHashBytes(byte[] initialHash) {
-            hash = initialHash;
+            _hash = initialHash;
         }
         public override string ToString() {
             // code found in FSAssetService -- is removing hyphen the right thing to do?
             // return BitConverter.ToString(hash).Replace("-", String.Empty);
             // Decided to leave removing the hyphen to the caller -- depends on what they
             //     are using the string for.
-            return BitConverter.ToString(hash);
+            return BitConverter.ToString(_hash);
         }
         public override byte[] ToBytes() {
-            return hash;
+            return _hash;
         }
         public override ulong ToULong() {
-            return (ulong)hash.GetHashCode();
+            return this.MakeHashCode();
         }
         public override bool Equals(BHash other) {
             bool ret = false;
             if (other != null) {
                 BHash bh = other as BHashBytes;
                 if (bh != null) {
-                    ret = hash.Equals(bh.ToBytes());
+                    ret = _hash.Equals(bh.ToBytes());
                 }
             }
             return ret;
@@ -145,13 +156,13 @@ namespace org.herbal3d.BasilOS {
                 BHash bh = other as BHashBytes;
                 if (bh != null) {
                     byte[] otherb = bh.ToBytes();
-                    if (hash.Length != otherb.Length) {
-                        ret = hash.Length.CompareTo(otherb.Length);
+                    if (_hash.Length != otherb.Length) {
+                        ret = _hash.Length.CompareTo(otherb.Length);
                     }
                     else {
                         ret = 0;    // start off assuming they are equal
-                        for (int ii = 0; ii < hash.Length; ii++) {
-                            ret = hash[ii].CompareTo(otherb[ii]);
+                        for (int ii = 0; ii < _hash.Length; ii++) {
+                            ret = _hash[ii].CompareTo(otherb[ii]);
                             if (ret != 0) break;
                         }
                     }
@@ -159,6 +170,21 @@ namespace org.herbal3d.BasilOS {
             }
             return ret;
         }
+        public override int GetHashCode()
+        {
+            ulong hashhash = this.MakeHashCode();
+            ulong upper = (hashhash >> 32 )& 0xffffffff;
+            ulong lower = hashhash & 0xffffffff;
+            return (int)(upper ^ lower);
+        }
+        public ulong MakeHashCode() {
+            ulong h = 5381;
+            for (int ii = 0; ii < _hash.Length; ii++) {
+                h = ((h << 5) + h) + (ulong)(_hash[ii]);
+            }
+            return h;
+        }
+
     }
 
     // ======================================================================

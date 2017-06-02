@@ -186,7 +186,7 @@ namespace org.herbal3d.BasilOS {
 
                     try {
 
-                        ConvertEntitiesToMeshes(assetFetcher, _context)
+                        ConvertEntitiesToMeshes(assetFetcher)
                             .Catch(e => {
                                 _log.ErrorFormat("{0} exception in ConvertEntitiesToMeshes: {1}", _logHeader, e);
                             })
@@ -295,7 +295,7 @@ namespace org.herbal3d.BasilOS {
 
         // For each of the SceneObjectGroups in the scene, create an EntityGroup with everything converted to meshes
         // Also add the terrain if needed.
-        private IPromise<EntityGroupList> ConvertEntitiesToMeshes(IAssetFetcher assetFetcher, BasilModuleContext context) {
+        private IPromise<EntityGroupList> ConvertEntitiesToMeshes(IAssetFetcher assetFetcher) {
             Promise<EntityGroupList> prom = new Promise<EntityGroupList>();
 
             using (PrimToMesh assetMesher = new PrimToMesh(_log)) {

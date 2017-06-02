@@ -49,7 +49,7 @@ namespace org.herbal3d.BasilOS {
             public SimilarFaces() : base() {
             }
             public void AddSimilarFace(BHash pHash, FaceInfo pFace) {
-                if (! this.ContainsKey(pHash)) {
+                if (!this.ContainsKey(pHash)) {
                     this.Add(pHash, new List<FaceInfo>());
                 }
                 this[pHash].Add(pFace);
@@ -75,6 +75,8 @@ namespace org.herbal3d.BasilOS {
                 ep.faces.ForEach(faceInfo => {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
                     BHash hashCode = new BHashULong((ulong)tef.GetHashCode());
+                    // _context.log.DebugFormat("{0} ConvertEntitiesIntoSharedMaterialMeshes: hash={1}, id={2}",
+                    //             _logHeader, hashCode, faceInfo.textureID);
                     similarFaces.AddSimilarFace(hashCode, faceInfo);
                 });
             });
@@ -116,7 +118,7 @@ namespace org.herbal3d.BasilOS {
                     // totalFaces++;
                 });
             });
-            // m_log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: EGs={1}, totalFaces={2}, similarFaces={3}",
+            // _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: EGs={1}, totalFaces={2}, similarFaces={3}",
             //         _logHeader, eg.Count, totalFaces, similarFaces.Count);
 
             EntityGroup rebuilt = new EntityGroup(
@@ -125,7 +127,7 @@ namespace org.herbal3d.BasilOS {
                 }).ToList()
             );
 
-            _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: after build: {1}", _logHeader, rebuilt.Stats());
+            // _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: after build: {1}", _logHeader, rebuilt.Stats());
 
             return rebuilt;
         }
@@ -179,12 +181,12 @@ namespace org.herbal3d.BasilOS {
             newFace.hasAlpha = rootFace.hasAlpha;
             newEp.faces.Add(newFace);
 
-            // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
+            // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
             //             _logHeader, newEp.translation, newEp.rotation);
 
             // Based of the root face, create a new mesh that holds all the faces
             similarFaceList.ForEach(faceInfo => {
-                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: adding {1} h={2}, verts={3}, ind={4}",
+                // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: adding {1} h={2}, verts={3}, ind={4}",
                 //                 _logHeader, faceInfo.containingPrim.ID,
                 //                 similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
                 // 'faceInfo' and 'ep' is the vertex/indices we're adding to 'newFace'
@@ -202,7 +204,7 @@ namespace org.herbal3d.BasilOS {
                     worldPos = ep.fromOS.SOP.GetWorldPosition();
                     worldRot = ep.fromOS.SOP.GetWorldRotation();
                 }
-                // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
+                // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
                 //                 _logHeader, faceInfo.containingPrim.ID, worldPos, worldRot);
                 newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
                     OMVR.Vertex newVert = new OMVR.Vertex();
@@ -225,14 +227,14 @@ namespace org.herbal3d.BasilOS {
                     OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
                     OMV.Quaternion invWorldRot = OMV.Quaternion.Inverse(worldRot);
                     OMV.Quaternion rotrot = invWorldRot * newEp.rotation;
-                    m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
+                    _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
                                 _logHeader, worldPos, worldRot);
                     newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
                         OMVR.Vertex newVert = new OMVR.Vertex();
                         newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
                         newVert.Normal = vert.Normal * rotrot;
                         newVert.TexCoord = vert.TexCoord;
-                        m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
+                        _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
                                         _logHeader, vert.Position, newVert.Position );
                         return newVert;
                     }));
@@ -241,7 +243,7 @@ namespace org.herbal3d.BasilOS {
 
                 newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
             });
-            // m_log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
+            // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
             //             _logHeader, similarFaceKvp.Key, newFace.vertexs.Count, newFace.indices.Count);
             return newEp;
 

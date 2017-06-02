@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2017 Robert Adams
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,10 +39,46 @@ namespace org.herbal3d.BasilOS {
         private string _assetInfo;
         private BasilModuleContext _context;
 
-        private static string LogHeader = "BasilPersist";
+        private static string _logHeader = "BasilPersist";
 
         // Texture cache used when processing one region
-        private static Dictionary<int, Image> textureCache = new Dictionary<int, Image>();
+        private static Dictionary<int, ImageInfo> textureCache = new Dictionary<int, ImageInfo>();
+
+        public class ImageInfo {
+            public bool hasTransprency;
+            public Image image;
+
+            public ImageInfo() {
+                hasTransprency = false;
+            }
+
+            public ImageInfo(Image pImage) {
+                hasTransprency = false;
+                image = pImage;
+            }
+
+            // Check the image in this TextureInfo for transparency and set this.hasTransparency.
+            public bool CheckForTransparency() {
+                hasTransprency = false;
+                if (image != null) {
+                    if (Image.IsAlphaPixelFormat(image.PixelFormat)) {
+                        // The image could have alpha values in it
+                        Bitmap bitmapImage = image as Bitmap;
+                        if (bitmapImage != null) {
+                            for (int xx = 0; xx < bitmapImage.Width; xx++) {
+                                for (int yy = 0; yy < bitmapImage.Height; yy++) {
+                                    if (bitmapImage.GetPixel(xx, yy).A != 255) {
+                                        hasTransprency = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return hasTransprency;
+            }
+        }
 
         public BasilPersist(string pAssetType, string pInfo, BasilModuleContext pContext) {
             _assetType = pAssetType;
@@ -68,7 +104,7 @@ namespace org.herbal3d.BasilOS {
                     }
                     */
                     // _context.log.DebugFormat("{0} WriteOutImageForEP: id={1}, hasAlpha={2}, format={3}",
-                    //                 LogHeader, faceInfo.textureID, faceInfo.hasAlpha, texImage.PixelFormat);
+                    //                 _logHeader, faceInfo.textureID, faceInfo.hasAlpha, texImage.PixelFormat);
                     texImage.Save(texFilename, ImageFormat.Png);
                 }
                 catch (Exception e) {
@@ -78,35 +114,42 @@ namespace org.herbal3d.BasilOS {
         }
 
         // Keep a cache if image data and either fetch and Image or return a cached instance.
-        public Promise<Image> GetUniqueTextureData(FaceInfo faceInfo, IAssetFetcher assetFetcher) {
+        public Promise<ImageInfo> GetUniqueTextureData(FaceInfo faceInfo, IAssetFetcher assetFetcher) {
 
             string imageFilename = CreateFilename();
 
-            Promise<Image> prom = new Promise<Image>();
+            Promise<ImageInfo> prom = new Promise<ImageInfo>();
             EntityHandle textureHandle = new EntityHandle((OMV.UUID)faceInfo.textureID);
             int hash = textureHandle.GetHashCode();
             if (textureCache.ContainsKey(hash)) {
+                // _context.log.DebugFormat("{0} GetUniqueTextureData. found image in cache. {1}", _logHeader, faceInfo.textureID);
                 prom.Resolve(textureCache[hash]);
             }
             else {
                 // If the converted file already exists, read that one in
                 if (File.Exists(imageFilename)) {
                     var anImage = Image.FromFile(imageFilename);
-                    _context.log.DebugFormat("{0} GetUniqueTextureData: reading in existing image from {1}", LogHeader, imageFilename);
-                    textureCache.Add(hash, anImage);
-                    prom.Resolve(anImage);
+                    // _context.log.DebugFormat("{0} GetUniqueTextureData: reading in existing image from {1}", _logHeader, imageFilename);
+                    ImageInfo imgInfo = new ImageInfo(anImage);
+                    imgInfo.CheckForTransparency();
+                    textureCache.Add(hash, imgInfo);
+                    prom.Resolve(imgInfo);
                 }
                 else {
                     // If not in the cache or converted file, get it from the asset server
+                    _context.log.DebugFormat("{0} GetUniqueTextureData. not in file or cache. Fetching image. {1}", _logHeader, faceInfo.textureID);
                     assetFetcher.FetchTextureAsImage(textureHandle)
                     .Catch(e => {
                         prom.Reject(new Exception(String.Format("Could not fetch texture. handle={0}. e={1}", textureHandle, e)));
                     })
                     .Then(theImage => {
                         try {
-                            textureCache.Add(textureHandle.GetHashCode(), theImage);
-                            // _context.log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", LogHeader, textureHandle, hash);
-                            prom.Resolve(theImage);
+                            // _context.log.DebugFormat("{0} GetUniqueTextureData. adding to cache. {1}", _logHeader, faceInfo.textureID);
+                            ImageInfo imgInfo = new ImageInfo(theImage);
+                            imgInfo.CheckForTransparency();
+                            textureCache.Add(textureHandle.GetHashCode(), imgInfo);
+                            // _context.log.DebugFormat("{0} GetUniqueTextureData. handle={1}, hash={2}, caching", _logHeader, textureHandle, hash);
+                            prom.Resolve(imgInfo);
                         }
                         catch (Exception e) {
                             prom.Reject(new Exception(String.Format("Texture conversion failed. handle={0}. e={1}", textureHandle, e)));
@@ -176,8 +219,6 @@ namespace org.herbal3d.BasilOS {
                     sizeW = (int)(inImage.Width * (size / inImage.Height));
                 }
                 */
-                _context.log.DebugFormat("{0} starting resize of image from {1}/{2} to {3}/{4}",
-                            LogHeader, inImage.Width, inImage.Height, sizeW, sizeH);
                 Image thumbNail = new Bitmap(sizeW, sizeH, inImage.PixelFormat);
                 using (Graphics g = Graphics.FromImage(thumbNail)) {
                     g.CompositingQuality = CompositingQuality.HighQuality;
@@ -186,7 +227,6 @@ namespace org.herbal3d.BasilOS {
                     Rectangle rect = new Rectangle(0, 0, sizeW, sizeH);
                     g.DrawImage(inImage, rect);
                 }
-                _context.log.DebugFormat("{0} completed resize of image from {1}/{2}", LogHeader, inImage.Width, inImage.Height);
                 return thumbNail;
             }
             return inImage;
@@ -209,7 +249,7 @@ namespace org.herbal3d.BasilOS {
             }
             catch (Exception e) {
                 // _context.log.ErrorFormat("{0} Failed creation of GLTF file directory. dir={1}, e: {2}",
-                //             LogHeader, absDir, e);
+                //             _logHeader, absDir, e);
                 return null;
             }
             return absDir;

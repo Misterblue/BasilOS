@@ -207,7 +207,7 @@ namespace org.herbal3d.BasilOS {
     // =============================================================
     public class Gltf : GltfClass {
         ILog m_log;
-        private static string LogHeader = "Gltf";
+        private static string _logHeader = "Gltf";
 
         public GltfAttributes extensionsUsed;   // list of extensions used herein
 
