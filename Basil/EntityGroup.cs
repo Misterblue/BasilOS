@@ -59,6 +59,9 @@ namespace org.herbal3d.BasilOS {
             { LeftHand_Yup, "LeftHand,Y-up" },
             { LeftHand_Zup, "LeftHand,Z-up" }
         };
+        public CoordSystem clone() {
+            return new CoordSystem(this.system);
+        }
     }
 
     public class FaceInfo {
@@ -327,7 +330,7 @@ namespace org.herbal3d.BasilOS {
         }
     }
 
-    // list of entities ... can safely add and entity multiple times
+    // list of entities
     public class EntityGroupList : List<EntityGroup> {
         public EntityGroupList() : base() {
         }

@@ -74,18 +74,16 @@ namespace org.herbal3d.BasilOS {
             staticEntities.ForEachExtendedPrim(ep => {
                 ep.faces.ForEach(faceInfo => {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
-                    BHash hashCode = new BHashULong((ulong)tef.GetHashCode());
-                    // _context.log.DebugFormat("{0} ConvertEntitiesIntoSharedMaterialMeshes: hash={1}, id={2}",
-                    //             _logHeader, hashCode, faceInfo.textureID);
+                    BHash hashCode = new BHashULong(tef.GetHashCode());
                     similarFaces.AddSimilarFace(hashCode, faceInfo);
                 });
             });
 
             EntityGroupList rebuilt = new EntityGroupList(
                 similarFaces.Values.Select(similarFaceList => {
-                    var ep = CreateExtendedPrimFromSimilarFaces(similarFaceList);
+                    ExtendedPrim ep = CreateExtendedPrimFromSimilarFaces(similarFaceList);
                     // The created ExtendedPrim needs to be packaged into an EntityGroup
-                    var eg = new EntityGroup();
+                    EntityGroup eg = new EntityGroup();
                     eg.Add(new ExtendedPrimGroup(ep));
                     return eg;
                 }).ToList()
@@ -98,14 +96,7 @@ namespace org.herbal3d.BasilOS {
         //    merge faces using the same material into single meshes.
         // This reduces large linksets into smaller sets of meshes and also merges
         //    similar prim faces into single meshes.
-        public EntityGroup ConvertEntityGroupIntoSharedMaterialMeshes(EntityGroup eg) {
-            if (eg.Count == 1 && eg.First().primaryExtendePrim.faces.Count == 1) {
-                // if there is only one entity and that entity has only one mesh, just return
-                //     the thing passed.
-                _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: only one face in one entity.", _logHeader);
-                return eg;
-            }
-
+        public EntityGroupList ConvertEntityGroupIntoSharedMaterialMeshes(EntityGroup eg) {
             // Go through all the materialed meshes and see if there are meshes to share
             SimilarFaces similarFaces = new SimilarFaces();
             // int totalFaces = 0; // DEBUG DEBUG
@@ -113,26 +104,39 @@ namespace org.herbal3d.BasilOS {
                 ExtendedPrim ep = epg.primaryExtendePrim;
                 ep.faces.ForEach(faceInfo => {
                     OMV.Primitive.TextureEntryFace tef = faceInfo.textureEntry;
-                    BHash hashCode = new BHashULong((ulong)tef.GetHashCode());
+                    BHash hashCode = new BHashULong(tef.GetHashCode());
                     similarFaces.AddSimilarFace(hashCode, faceInfo);
-                    // totalFaces++;
+                    // totalFaces++;   // DEBUG DEBUG
                 });
             });
-            // _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: EGs={1}, totalFaces={2}, similarFaces={3}",
-            //         _logHeader, eg.Count, totalFaces, similarFaces.Count);
 
+            /*
             EntityGroup rebuilt = new EntityGroup(
                 similarFaces.Values.Select(similarFaceList => {
-                    return new ExtendedPrimGroup(CreateExtendedPrimFromSimilarFaces(similarFaceList));
+                    ExtendedPrim ep = CreateExtendedPrimFromSimilarFaces(similarFaceList);
+                    _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: create ExtendedPrim: {1}",
+                                            _logHeader, ep.Stats());
+                    return new ExtendedPrimGroup(ep);
                 }).ToList()
             );
+            */
 
-            // _context.log.DebugFormat("{0} ConvertEntityGroupIntoSharedMaterialMeshes: after build: {1}", _logHeader, rebuilt.Stats());
+            EntityGroupList rebuilt = new EntityGroupList(
+                similarFaces.Values.Select(similarFaceList => {
+                    ExtendedPrim ep = CreateExtendedPrimFromSimilarFaces(similarFaceList);
+                    // The created ExtendedPrim needs to be packaged into an EntityGroup
+                    EntityGroup newEg = new EntityGroup();
+                    newEg.Add(new ExtendedPrimGroup(ep));
+                    return newEg;
+                }).ToList()
+            );
 
             return rebuilt;
         }
 
         // Given a list of faces, merge the meshes into a single mesh.
+        // THese faces could be from different prims so position computation has to go
+        //    to the face's containing prim and then relocated to its new root.
         // The returned ExtendedPrim has a location in the world and all the mesh vertices
         //    have been moved and oriented to that new location.
         private ExtendedPrim CreateExtendedPrimFromSimilarFaces(List<FaceInfo> similarFaceList) {
@@ -145,19 +149,21 @@ namespace org.herbal3d.BasilOS {
             foreach (FaceInfo faceInfo in similarFaceList) {
                 if (faceInfo.containingPrim != null && faceInfo.containingPrim.isRoot) {
                     rootFace = faceInfo;
+                    // _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: one similar is root.", _logHeader);
                     break;
                 }
             }
             if (rootFace == null) {
                 // If there wasn't a root entity in the list, just pick a random one
                 rootFace = similarFaceList.First();
+                // _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: no root. Assuming first face", _logHeader);
             }
             ExtendedPrim rootEp = rootFace.containingPrim;
 
             // Create the new combined object
             ExtendedPrim newEp = new ExtendedPrim(rootEp);
             newEp.ID = OMV.UUID.Random();
-            newEp.coordSystem = rootEp.coordSystem;
+            newEp.coordSystem = rootEp.coordSystem.clone();
             newEp.isRoot = true;
             newEp.positionIsParentRelative = false;
 
@@ -166,6 +172,7 @@ namespace org.herbal3d.BasilOS {
                 newEp.translation = rootEp.fromOS.SOP.GetWorldPosition();
             }
             else {
+                _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: no OS link. Assuming translation of zero", _logHeader);
                 newEp.translation = OMV.Vector3.Zero;
             }
             newEp.rotation = OMV.Quaternion.Identity;
@@ -181,14 +188,14 @@ namespace org.herbal3d.BasilOS {
             newFace.hasAlpha = rootFace.hasAlpha;
             newEp.faces.Add(newFace);
 
-            // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: newEp.trans={1}, newEp.rot={2}",
+            // _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: newEp.trans={1}, newEp.rot={2}",
             //             _logHeader, newEp.translation, newEp.rotation);
 
             // Based of the root face, create a new mesh that holds all the faces
             similarFaceList.ForEach(faceInfo => {
-                // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: adding {1} h={2}, verts={3}, ind={4}",
-                //                 _logHeader, faceInfo.containingPrim.ID,
-                //                 similarFaceKvp.Key, faceInfo.vertexs.Count, faceInfo.indices.Count);
+                // _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: adding face {1} from {2}, verts={3}, ind={4}",
+                //                 _logHeader, faceInfo.num, faceInfo.containingPrim.ID,
+                //                 faceInfo.vertexs.Count, faceInfo.indices.Count);
                 // 'faceInfo' and 'ep' is the vertex/indices we're adding to 'newFace'
                 ExtendedPrim ep = faceInfo.containingPrim;
                 // The indices of the mesh being added needs to be advanced 'indicesBase' since the vertices are
@@ -204,7 +211,7 @@ namespace org.herbal3d.BasilOS {
                     worldPos = ep.fromOS.SOP.GetWorldPosition();
                     worldRot = ep.fromOS.SOP.GetWorldRotation();
                 }
-                // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: map {1}, wPos={2}, wRot={3}",
+                // _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: map {1}, wPos={2}, wRot={3}",
                 //                 _logHeader, faceInfo.containingPrim.ID, worldPos, worldRot);
                 newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
                     OMVR.Vertex newVert = new OMVR.Vertex();
@@ -215,42 +222,10 @@ namespace org.herbal3d.BasilOS {
                     return newVert;
                 }));
                 newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
-
-                /* Old code kept for reference. Remove when above is working
-                if (faceInfo == rootFace) {
-                    // The vertices for the root face don't need translation.
-                    newFace.vertexs.AddRange(faceInfo.vertexs);
-                }
-                else {
-                    // Any other vertex must be moved to be world coords relative to new root
-                    OMV.Vector3 worldPos = ep.fromOS.SOP.GetWorldPosition();
-                    OMV.Quaternion worldRot = ep.fromOS.SOP.GetWorldRotation();
-                    OMV.Quaternion invWorldRot = OMV.Quaternion.Inverse(worldRot);
-                    OMV.Quaternion rotrot = invWorldRot * newEp.rotation;
-                    _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: wPos={1}, wRot={2}",
-                                _logHeader, worldPos, worldRot);
-                    newFace.vertexs.AddRange(faceInfo.vertexs.Select(vert => {
-                        OMVR.Vertex newVert = new OMVR.Vertex();
-                        newVert.Position = vert.Position * rotrot - worldPos + newEp.translation;
-                        newVert.Normal = vert.Normal * rotrot;
-                        newVert.TexCoord = vert.TexCoord;
-                        _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: vertPos={1}, nVerPos={2}",
-                                        _logHeader, vert.Position, newVert.Position );
-                        return newVert;
-                    }));
-                }
-                END of old code */
-
-                newFace.indices.AddRange(faceInfo.indices.Select(ind => (ushort)(ind + indicesBase)));
             });
-            // _context.log.DebugFormat("{0} ConvertSharedFacesIntoMeshes: COMPLETE: h={1}, verts={2}. ind={3}",
-            //             _logHeader, similarFaceKvp.Key, newFace.vertexs.Count, newFace.indices.Count);
+            // _context.log.DebugFormat("{0} CreateExtendedPrimFromSimilarFaces: COMPLETE: verts={1}. ind={2}",
+            //             _logHeader, newFace.vertexs.Count, newFace.indices.Count);
             return newEp;
-
-            // EntityGroup eg = new EntityGroup();
-            // eg.Add(new ExtendedPrimGroup(newEp));
-
-            // return eg;
         }
 
     }

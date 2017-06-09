@@ -81,6 +81,10 @@ namespace org.herbal3d.BasilOS {
         public BHashULong(ulong initialHash) {
             _hash = initialHash;
         }
+        // the .NET GetHashCode uses an int. Make conversion easy.
+        public BHashULong(int initialHash) {
+            _hash = (ulong)initialHash;
+        }
         public override string ToString() {
             return _hash.ToString();
         }

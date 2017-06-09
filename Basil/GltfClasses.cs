@@ -484,6 +484,67 @@ namespace org.herbal3d.BasilOS {
             Buffer.BlockCopy(floatVertexRemapped, 0, binBuffRaw, binVerticesView.byteOffset, binVerticesView.byteLength);
             floatVertexRemapped = null;
 
+            // Gltf requires min and max values for all the mesh vertex collections
+            OMV.Vector3 vmin = new OMV.Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            OMV.Vector3 vmax = new OMV.Vector3(float.MinValue, float.MinValue, float.MinValue);
+            OMV.Vector3 nmin = new OMV.Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            OMV.Vector3 nmax = new OMV.Vector3(float.MinValue, float.MinValue, float.MinValue);
+            OMV.Vector2 umin = new OMV.Vector2(float.MaxValue, float.MaxValue);
+            OMV.Vector2 umax = new OMV.Vector2(float.MinValue, float.MinValue);
+            vertexCollection.ForEach(vert => {
+                // OMV.Vector3 has a Min and Max function but it does a 'new' which causes lots of GC thrash
+                vmin.X = Math.Min(vmin.X, vert.Position.X);
+                vmin.Y = Math.Min(vmin.Y, vert.Position.Y);
+                vmin.Z = Math.Min(vmin.Z, vert.Position.Z);
+                vmax.X = Math.Max(vmax.X, vert.Position.X);
+                vmax.Y = Math.Max(vmax.Y, vert.Position.Y);
+                vmax.Z = Math.Max(vmax.Z, vert.Position.Z);
+
+                nmin.X = Math.Min(nmin.X, vert.Normal.X);
+                nmin.Y = Math.Min(nmin.Y, vert.Normal.Y);
+                nmin.Z = Math.Min(nmin.Z, vert.Normal.Z);
+                nmax.X = Math.Max(nmax.X, vert.Normal.X);
+                nmax.Y = Math.Max(nmax.Y, vert.Normal.Y);
+                nmax.Z = Math.Max(nmax.Z, vert.Normal.Z);
+
+                umin.X = Math.Min(umin.X, vert.TexCoord.X);
+                umin.Y = Math.Min(umin.Y, vert.TexCoord.Y);
+                umax.X = Math.Max(umax.X, vert.TexCoord.X);
+                umax.Y = Math.Max(umax.Y, vert.TexCoord.Y);
+            });
+
+            // Build one large group of vertices/normals/UVs that the individual mesh
+            //     indices will reference. The vertices have been uniquified above.
+            GltfAccessor vertexAccessor = new GltfAccessor(gltfRoot, buffName + "_accCVer");
+            vertexAccessor.bufferView = binVerticesView;
+            vertexAccessor.count = vertexCollection.Count;
+            vertexAccessor.byteOffset = 0;
+            vertexAccessor.byteStride = sizeof(float) * 3;
+            vertexAccessor.componentType = WebGLConstants.FLOAT;
+            vertexAccessor.type = "VEC3";
+            vertexAccessor.min = new object[3] { vmin.X, vmin.Y, vmin.Z };
+            vertexAccessor.max = new object[3] { vmax.X, vmax.Y, vmax.Z };
+
+            GltfAccessor normalsAccessor = new GltfAccessor(gltfRoot, buffName + "_accNor");
+            normalsAccessor.bufferView = binVerticesView;
+            normalsAccessor.count = vertexCollection.Count;
+            normalsAccessor.byteOffset = normalBase * sizeof(float);
+            normalsAccessor.byteStride = sizeof(float) * 3;
+            normalsAccessor.componentType = WebGLConstants.FLOAT;
+            normalsAccessor.type = "VEC3";
+            normalsAccessor.min = new object[3] { nmin.X, nmin.Y, nmin.Z };
+            normalsAccessor.max = new object[3] { nmax.X, nmax.Y, nmax.Z };
+
+            GltfAccessor UVAccessor = new GltfAccessor(gltfRoot, buffName + "_accUV");
+            UVAccessor.bufferView = binVerticesView;
+            UVAccessor.count = vertexCollection.Count;
+            UVAccessor.byteOffset = texCoordBase * sizeof(float);
+            UVAccessor.byteStride = sizeof(float) * 2;
+            UVAccessor.componentType = WebGLConstants.FLOAT;
+            UVAccessor.type = "VEC2";
+            UVAccessor.min = new object[2] { umin.X, umin.Y };
+            UVAccessor.max = new object[2] { umax.X, umax.Y };
+
             // For each mesh, copy the indices into the binary output buffer and create the accessors
             //    that point from the mesh into the binary info.
             int indicesOffset = binIndicesView.byteOffset;
@@ -512,65 +573,6 @@ namespace org.herbal3d.BasilOS {
                 indicesOffset += meshIndicesSize;
                 // Align the indices to float boundries
                 indicesOffset += (sizeof(float) - (indicesOffset % sizeof(float)) % sizeof(float));
-
-                // Gltf requires min and max values for all the mesh vertex collections
-                OMV.Vector3 vmin = new OMV.Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-                OMV.Vector3 vmax = new OMV.Vector3(float.MinValue, float.MinValue, float.MinValue);
-                OMV.Vector3 nmin = new OMV.Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-                OMV.Vector3 nmax = new OMV.Vector3(float.MinValue, float.MinValue, float.MinValue);
-                OMV.Vector2 umin = new OMV.Vector2(float.MaxValue, float.MaxValue);
-                OMV.Vector2 umax = new OMV.Vector2(float.MinValue, float.MinValue);
-                mesh.faceInfo.vertexs.ForEach(vert => {
-                    // OMV.Vector3 has a Min and Max function but it does a 'new' which causes lots of GC thrash
-                    vmin.X = Math.Min(vmin.X, vert.Position.X);
-                    vmin.Y = Math.Min(vmin.Y, vert.Position.Y);
-                    vmin.Z = Math.Min(vmin.Z, vert.Position.Z);
-                    vmax.X = Math.Max(vmax.X, vert.Position.X);
-                    vmax.Y = Math.Max(vmax.Y, vert.Position.Y);
-                    vmax.Z = Math.Max(vmax.Z, vert.Position.Z);
-
-                    nmin.X = Math.Min(nmin.X, vert.Normal.X);
-                    nmin.Y = Math.Min(nmin.Y, vert.Normal.Y);
-                    nmin.Z = Math.Min(nmin.Z, vert.Normal.Z);
-                    nmax.X = Math.Max(nmax.X, vert.Normal.X);
-                    nmax.Y = Math.Max(nmax.Y, vert.Normal.Y);
-                    nmax.Z = Math.Max(nmax.Z, vert.Normal.Z);
-
-                    umin.X = Math.Min(umin.X, vert.TexCoord.X);
-                    umin.Y = Math.Min(umin.Y, vert.TexCoord.Y);
-                    umax.X = Math.Max(umax.X, vert.TexCoord.X);
-                    umax.Y = Math.Max(umax.Y, vert.TexCoord.Y);
-                });
-
-                GltfAccessor vertexAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accCVer");
-                vertexAccessor.bufferView = binVerticesView;
-                vertexAccessor.count = vertexCollection.Count;
-                vertexAccessor.byteOffset = 0;
-                vertexAccessor.byteStride = sizeof(float) * 3;
-                vertexAccessor.componentType = WebGLConstants.FLOAT;
-                vertexAccessor.type = "VEC3";
-                vertexAccessor.min = new object[3] { vmin.X, vmin.Y, vmin.Z };
-                vertexAccessor.max = new object[3] { vmax.X, vmax.Y, vmax.Z };
-
-                GltfAccessor normalsAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accNor");
-                normalsAccessor.bufferView = binVerticesView;
-                normalsAccessor.count = vertexCollection.Count;
-                normalsAccessor.byteOffset = normalBase * sizeof(float);
-                normalsAccessor.byteStride = sizeof(float) * 3;
-                normalsAccessor.componentType = WebGLConstants.FLOAT;
-                normalsAccessor.type = "VEC3";
-                normalsAccessor.min = new object[3] { nmin.X, nmin.Y, nmin.Z };
-                normalsAccessor.max = new object[3] { nmax.X, nmax.Y, nmax.Z };
-
-                GltfAccessor UVAccessor = new GltfAccessor(gltfRoot, mesh.ID + "_accUV");
-                UVAccessor.bufferView = binVerticesView;
-                UVAccessor.count = vertexCollection.Count;
-                UVAccessor.byteOffset = texCoordBase * sizeof(float);
-                UVAccessor.byteStride = sizeof(float) * 2;
-                UVAccessor.componentType = WebGLConstants.FLOAT;
-                UVAccessor.type = "VEC2";
-                UVAccessor.min = new object[2] { umin.X, umin.Y };
-                UVAccessor.max = new object[2] { umax.X, umax.Y };
 
                 mesh.onePrimitive.indices = indicesAccessor;
                 mesh.onePrimitive.position = vertexAccessor;

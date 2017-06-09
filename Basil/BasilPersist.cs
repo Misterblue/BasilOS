@@ -137,7 +137,7 @@ namespace org.herbal3d.BasilOS {
                 }
                 else {
                     // If not in the cache or converted file, get it from the asset server
-                    _context.log.DebugFormat("{0} GetUniqueTextureData. not in file or cache. Fetching image. {1}", _logHeader, faceInfo.textureID);
+                    // _context.log.DebugFormat("{0} GetUniqueTextureData. not in file or cache. Fetching image. {1}", _logHeader, faceInfo.textureID);
                     assetFetcher.FetchTextureAsImage(textureHandle)
                     .Catch(e => {
                         prom.Reject(new Exception(String.Format("Could not fetch texture. handle={0}. e={1}", textureHandle, e)));

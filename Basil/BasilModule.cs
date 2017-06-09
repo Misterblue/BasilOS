@@ -223,10 +223,19 @@ namespace org.herbal3d.BasilOS {
                                         // The non-static entities are packaged so they can move as a group.
                                         // This means the similar faces are only checked within the entity rather than across the region.
                                         reorgScene.rebuiltNonStaticEntities = new EntityGroupList(
+                                            reorgScene.nonStaticEntities.SelectMany(eg => {
+                                                return converter.ConvertEntityGroupIntoSharedMaterialMeshes(eg);
+                                            }).ToList()
+                                        );
+                                        /* TODO: the above creates separate scene entities when really the meshes should
+                                         * be in a single entity. Problem is getting the transforms for children correct.
+                                         * ConvertEntityGroupIntoSharedMaterialMeshes used to return an EntityGroup.
+                                        reorgScene.rebuiltNonStaticEntities = new EntityGroupList(
                                                 reorgScene.nonStaticEntities.Select(eg => {
                                                     return converter.ConvertEntityGroupIntoSharedMaterialMeshes(eg);
                                                 }).ToList()
                                             );
+                                        */
                                     }
                                     catch (Exception e) {
                                         _log.ErrorFormat("{0} Exception calling ConvertEntityGroupIntoSharedMaterialMeshes: {1}", _logHeader, e);
