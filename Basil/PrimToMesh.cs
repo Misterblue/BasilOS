@@ -36,12 +36,12 @@ namespace org.herbal3d.BasilOS {
 
     public class PrimToMesh : IDisposable {
         private OMVR.MeshmerizerR m_mesher;
-        ILog m_log;
-        String LogHeader = "[Basil.PrimToMesh]";
+        ILog _log;
+        String _logHeader = "[Basil.PrimToMesh]";
 
         public PrimToMesh(ILog logger) {
             m_mesher = new OMVR.MeshmerizerR();
-            m_log = logger;
+            _log = logger;
         }
 
         /// <summary>
@@ -121,7 +121,7 @@ namespace org.herbal3d.BasilOS {
                     prom.Resolve(extPrimGroup);
                 })
                 .Catch((e) => {
-                    m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}: {2}", LogHeader, texHandle, e);
+                    _log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}: {2}", _logHeader, texHandle, e);
                     prom.Reject(e);
                 });
 
@@ -151,7 +151,7 @@ namespace org.herbal3d.BasilOS {
                         }
                     })
                     .Catch((e) => {
-                        m_log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}", LogHeader, e);
+                        _log.ErrorFormat("{0} MeshFromPrimSculptData: Rejected FetchTexture: {1}", _logHeader, e);
                         prom.Reject(e);
                     });
             }
@@ -167,6 +167,8 @@ namespace org.herbal3d.BasilOS {
         public ExtendedPrimGroup MeshFromHeightMap( float[,] pHeightMap, int regionSizeX, int regionSizeY) {
 
             // OMVR.Face rawMesh = m_mesher.TerrainMesh(pHeightMap, 0, pHeightMap.GetLength(0)-1, 0, pHeightMap.GetLength(1)-1);
+            _log.DebugFormat("{0} MeshFromHeightMap: heightmap=<{1},{2}>, regionSize=<{3},{4}>",
+                    _logHeader, pHeightMap.GetLength(0), pHeightMap.GetLength(1), regionSizeX, regionSizeY);
             OMVR.Face rawMesh = BasilTerrain.TerrainMesh(pHeightMap, (float)regionSizeX, (float)regionSizeY);
             OMVR.FacetedMesh facetMesh = new OMVR.FacetedMesh();
             facetMesh.Faces = new List<OMVR.Face>() { rawMesh };

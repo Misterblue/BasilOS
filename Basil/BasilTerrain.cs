@@ -20,6 +20,8 @@ using System.Linq;
 using System.Drawing;
 using System.Text;
 
+using log4net;
+
 using OpenSim.Region.CoreModules.World.LegacyMap;
 
 using OMV = OpenMetaverse;
@@ -48,20 +50,18 @@ namespace org.herbal3d.BasilOS {
                 context.log.DebugFormat("{0}: CreateTerrainMesh. creating half sized terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
                 // Half resolution mesh that approximates the heightmap
                 heightMap = new float[XSize/2, YSize/2];
-                for (int xx = 1; xx < XSize; xx += 2) {
-                    for (int yy = 1; yy < YSize; yy += 2) {
+                for (int xx = 0; xx < XSize; xx += 2) {
+                    for (int yy = 0; yy < YSize; yy += 2) {
                         float here = terrainDef.GetHeightAtXYZ(xx+0, yy+0, 26);
-                        float ll = terrainDef.GetHeightAtXYZ(xx-1, yy-1, 26);
-                        float lr = terrainDef.GetHeightAtXYZ(xx+1, yy-1, 26);
-                        float ul = terrainDef.GetHeightAtXYZ(xx-1, yy+1, 26);
-                        float ur = terrainDef.GetHeightAtXYZ(xx+1, yy+1, 26);
-                        heightMap[(xx - 1) / 2, (yy - 1) / 2] = (here + ll + lr + ul + ur) / 5;
+                        float ln = terrainDef.GetHeightAtXYZ(xx+1, yy+0, 26);
+                        float ll = terrainDef.GetHeightAtXYZ(xx+0, yy+1, 26);
+                        float lr = terrainDef.GetHeightAtXYZ(xx+1, yy+1, 26);
+                        heightMap[xx/2, yy/2] = (here + ln + ll + lr) / 4;
                     }
                 }
             }
             else {
                 context.log.DebugFormat("{0}: CreateTerrainMesh. creating terrain sized <{1},{2}>", LogHeader, XSize/2, YSize/2);
-                heightMap = new float[XSize, YSize];
                 for (int xx = 0; xx < XSize; xx++) {
                     for (int yy = 0; yy < YSize; yy++) {
                         heightMap[xx, yy] = terrainDef.GetHeightAtXYZ(xx, yy, 26);
@@ -121,11 +121,23 @@ namespace org.herbal3d.BasilOS {
         }
 
         // A structure to hold vertex information that also includes the index for building indices.
-        private struct Vert {
+        private struct Vert : IEquatable<Vert>{
             public OMV.Vector3 Position;
             public OMV.Vector3 Normal;
             public OMV.Vector2 TexCoord;
-            public ushort index;
+            public uint index;
+            // Methods so this will work in a Dictionary
+            public override int GetHashCode() {
+                int hash = Position.GetHashCode();
+                hash = hash * 31 + Normal.GetHashCode();
+                hash = hash * 31 + TexCoord.GetHashCode();
+                return hash;
+            }
+            public bool Equals(Vert other) {
+                return Position == other.Position
+                    && Normal == other.Normal
+                    && TexCoord == other.TexCoord;
+            }
         }
 
         // PrimMesher has a terrain mesh generator but it doesn't compute normals.
@@ -147,7 +159,7 @@ namespace org.herbal3d.BasilOS {
             float coordStepX = 1.0f / sizeX;    // the coordinate dimension step for each heightmap step
             float coordStepY = 1.0f / sizeY;
 
-            ushort index = 0;
+            uint index = 0;
             for (int xx = 0; xx < sizeX; xx++) {
                 for (int yy = 0; yy < sizeY; yy++) {
                     Vert vert = new Vert();
@@ -179,21 +191,7 @@ namespace org.herbal3d.BasilOS {
             }
             vertices[sizeX -1, sizeY - 1].Normal = MakeNormal(vertices[sizeX -1 , sizeY - 1], vertices[sizeX - 2, sizeY - 1], vertices[sizeX - 1, sizeY - 2]);
 
-            // Make indices for all the vertices.
-            // Pass over the matrix and create two triangles for each quad
-            // Counter Clockwise
-            for (int xx = 0; xx < sizeX - 1; xx++) {
-                for (int yy = 0; yy < sizeY - 1; yy++) {
-                    indices.Add(vertices[xx + 0, yy + 0].index);
-                    indices.Add(vertices[xx + 1, yy + 0].index);
-                    indices.Add(vertices[xx + 0, yy + 1].index);
-                    indices.Add(vertices[xx + 0, yy + 1].index);
-                    indices.Add(vertices[xx + 1, yy + 0].index);
-                    indices.Add(vertices[xx + 1, yy + 1].index);
-                }
-            }
-
-            // Listify the vertices
+            // Convert our vertices into the format expected by the caller
             List<OMVR.Vertex> vertexList = new List<OMVR.Vertex>();
             for (int xx = 0; xx < sizeX; xx++) {
                 for (int yy = 0; yy < sizeY; yy++) {
@@ -205,6 +203,28 @@ namespace org.herbal3d.BasilOS {
                     vertexList.Add(oVert);
                 }
             }
+
+            // Make indices for all the vertices.
+            // Pass over the matrix and create two triangles for each quad
+            //
+            //   00-----01
+            //   | f1  /|
+            //   |   /  |
+            //   | / f2 |
+            //   10-----11
+            //
+            // Counter Clockwise
+            for (int xx = 0; xx < sizeX - 1; xx++) {
+                for (int yy = 0; yy < sizeY - 1; yy++) {
+                    indices.Add((ushort)vertices[xx + 0, yy + 0].index);
+                    indices.Add((ushort)vertices[xx + 1, yy + 0].index);
+                    indices.Add((ushort)vertices[xx + 0, yy + 1].index);
+                    indices.Add((ushort)vertices[xx + 0, yy + 1].index);
+                    indices.Add((ushort)vertices[xx + 1, yy + 0].index);
+                    indices.Add((ushort)vertices[xx + 1, yy + 1].index);
+                }
+            }
+
             OMVR.Face aface = new OMVR.Face();
             aface.Vertices = vertexList;
             aface.Indices = indices;
