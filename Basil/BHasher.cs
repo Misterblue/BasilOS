@@ -30,6 +30,9 @@ namespace org.herbal3d.BasilOS {
     //    oriented (create a hash of a byte buffer), the interface is built to cover both.
     //    Some optimizations are implemented internally (like not copying the buffer
     //    for buffer based hashers if Finish(bytes) is used).
+    // Note that the hash computation is not associative or communicative. That is,
+    //    the order of items added is important and, once Fisish() is called, new
+    //    items cannot be added.
     //
     // var hasher = new BHashSHA256();
     // BHash bHash = hasher.Finish(buffer);
@@ -72,7 +75,7 @@ namespace org.herbal3d.BasilOS {
         public abstract override int GetHashCode();
     }
 
-    // A hash that is an Int32
+    // A hash that is an Int64
     public class BHashULong : BHash {
         private ulong _hash;
         public BHashULong() {

@@ -143,7 +143,7 @@ namespace org.herbal3d.BasilOS {
         // PrimMesher has a terrain mesh generator but it doesn't compute normals.
         // TODO: Optimize by removing vertices that are just mid points.
         //    Having a vertex for every height is very inefficient especially for flat areas.
-        public static OMVR.Face TerrainMesh(float[,] heights, float realSizeX, float realSizeY) {
+        public static OMVR.Face TerrainMesh(float[,] heights, float realSizeX, float realSizeY, ILog log) {
 
             List<ushort> indices = new List<ushort>();
 
@@ -154,10 +154,10 @@ namespace org.herbal3d.BasilOS {
             //    optimizations.
             Vert[,] vertices = new Vert[sizeX, sizeY];
 
-            float stepX = realSizeX / sizeX;    // the real dimension step for each heightmap step
-            float stepY = realSizeY / sizeY;
-            float coordStepX = 1.0f / sizeX;    // the coordinate dimension step for each heightmap step
-            float coordStepY = 1.0f / sizeY;
+            float stepX = (realSizeX+1f) / (float)sizeX;    // the real dimension step for each heightmap step
+            float stepY = (realSizeY+1f) / (float)sizeY;
+            float coordStepX = 1.0f / (float)sizeX;    // the coordinate dimension step for each heightmap step
+            float coordStepY = 1.0f / (float)sizeY;
 
             uint index = 0;
             for (int xx = 0; xx < sizeX; xx++) {
