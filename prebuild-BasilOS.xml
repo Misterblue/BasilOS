@@ -1,4 +1,4 @@
-    <Project frameworkVersion="v4_0" name="Basil" path="addon-modules/BasilOS/Basil" type="Library">
+    <Project frameworkVersion="v4_6" name="Basil" path="addon-modules/BasilOS/Basil" type="Library">
       <Configuration name="Debug">
         <Options>
           <OutputPath>../../../bin/</OutputPath>
