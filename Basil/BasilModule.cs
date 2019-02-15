@@ -58,7 +58,7 @@ namespace org.herbal3d.BasilOS {
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "BasilModule")]
     public class BasilModule : INonSharedRegionModule {
         private static readonly ILog _log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-        private static String _logHeader = "[Basil]";
+        private static readonly String _logHeader = "[Basil]";
 
         private BasilParams _params;
         private IConfig _sysConfig = null;
@@ -468,22 +468,22 @@ namespace org.herbal3d.BasilOS {
             FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Yup | CoordSystem.UVOriginLowerLeft));
             // FixCoordinates(ep, new CoordSystem(CoordSystem.RightHand_Zup)); // DEBUG DEBUG -- No change
 
-            GltfNode newNode = new GltfNode(pGltf, containingScene, id);
-
-            newNode.name = ep.Name;
-
-            newNode.translation = ep.translation;
-            newNode.rotation = ep.rotation;
-            newNode.scale = ep.scale;
+            GltfNode newNode = new GltfNode(pGltf, containingScene, id) {
+                name = ep.Name,
+                translation = ep.translation,
+                rotation = ep.rotation,
+                scale = ep.scale
+            };
             if (ep.transform != null) {
                 newNode.matrix = (OMV.Matrix4)ep.transform;
             }
 
             ep.faces.ForEach(faceInfo => {
                 string meshID = ep.ID.ToString() + "_face" + faceInfo.num.ToString();
-                GltfMesh mesh = new GltfMesh(pGltf, meshID);
-                mesh.underlyingPrim = ep;
-                mesh.faceInfo = faceInfo;
+                GltfMesh mesh = new GltfMesh(pGltf, meshID) {
+                    underlyingPrim = ep,
+                    faceInfo = faceInfo
+                };
                 newNode.meshes.Add(mesh);
             });
 

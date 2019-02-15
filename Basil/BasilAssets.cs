@@ -41,8 +41,8 @@ namespace org.herbal3d.BasilOS {
 
     // Fetch an asset from  the OpenSimulator asset system
     public class OSAssetFetcher : IAssetFetcher {
-        private ILog m_log;
-        private string LogHeader = "[OSAssetFetcher]";
+        private readonly ILog m_log;
+        private readonly string _logHeader = "[OSAssetFetcher]";
 
         private Scene m_scene;
         private BasilParams m_params;
@@ -62,7 +62,8 @@ namespace org.herbal3d.BasilOS {
                 prom.Resolve(returnBytes);
             }
             else {
-                prom.Reject(new Exception("FetchRawAsset: could not fetch asset " + handle.ToString()));
+                prom.Reject(new Exception(String.Format("{0} FetchRawAsset: could not fetch asset {1}",
+                                        _logHeader, handle.ToString())));
             }
             return prom;
         }
@@ -120,8 +121,7 @@ namespace org.herbal3d.BasilOS {
                             imageDecoded = imgDecoder.DecodeToImage(asset.Data);
                         }
                         else {
-                            ManagedImage mimage;
-                            if (OpenJPEG.DecodeToImage(asset.Data, out mimage, out imageDecoded)) {
+                            if (OpenJPEG.DecodeToImage(asset.Data, out ManagedImage mimage, out imageDecoded)) {
                                 mimage = null;
                             }
                             else {

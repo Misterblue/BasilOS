@@ -22,6 +22,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Reflection;
 
 using RSG;
 
@@ -35,11 +36,12 @@ namespace org.herbal3d.BasilOS {
     // These classes wrap the logic for storing the binary, images, and json files
     //     for later processing.
     public class BasilPersist {
-        private string _assetType;
-        private string _assetInfo;
+        private readonly string _assetType;
+        private readonly string _assetInfo;
         private BasilModuleContext _context;
 
-        private static string _logHeader = "BasilPersist";
+        private static readonly ILog _log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly string _logHeader = "BasilPersist";
 
         // Texture cache used when processing one region
         private static Dictionary<int, ImageInfo> textureCache = new Dictionary<int, ImageInfo>();
@@ -63,8 +65,7 @@ namespace org.herbal3d.BasilOS {
                 if (image != null) {
                     if (Image.IsAlphaPixelFormat(image.PixelFormat)) {
                         // The image could have alpha values in it
-                        Bitmap bitmapImage = image as Bitmap;
-                        if (bitmapImage != null) {
+                        if (image is Bitmap bitmapImage) {
                             for (int xx = 0; xx < bitmapImage.Width; xx++) {
                                 for (int yy = 0; yy < bitmapImage.Height; yy++) {
                                     if (bitmapImage.GetPixel(xx, yy).A != 255) {
@@ -248,8 +249,9 @@ namespace org.herbal3d.BasilOS {
                 }
             }
             catch (Exception e) {
-                // _context.log.ErrorFormat("{0} Failed creation of GLTF file directory. dir={1}, e: {2}",
+                // m_log.ErrorFormat("{0} Failed creation of GLTF file directory. dir={1}, e: {2}",
                 //             _logHeader, absDir, e);
+                var temp = e;       // suppress use warning
                 return null;
             }
             return absDir;

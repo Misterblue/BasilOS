@@ -26,7 +26,7 @@ using Nini.Config;
 
 namespace org.herbal3d.BasilOS {
     public class BasilParams {
-        private static string LogHeader = "[BASIL PARAMS]";
+        private static readonly string LogHeader = "[BASIL PARAMS]";
 
         public BasilParams() {
             SetParameterDefaultValues();
@@ -80,7 +80,7 @@ namespace org.herbal3d.BasilOS {
         //
         // The single letter parameters for the delegates are:
         //    v = value (appropriate type)
-        private ParameterDefnBase[] ParameterDefinitions =
+        private readonly ParameterDefnBase[] ParameterDefinitions =
         {
             new ParameterDefn<bool>("Enabled", "If false, module is not enabled to operate",
                 false ),
@@ -147,9 +147,9 @@ namespace org.herbal3d.BasilOS {
         public delegate void PSetValue<T>(T val);
         public sealed class ParameterDefn<T> : ParameterDefnBase
         {
-            private T defaultValue;
-            private PSetValue<T> setter;
-            private PGetValue<T> getter;
+            private readonly T defaultValue;
+            private readonly PSetValue<T> setter;
+            private readonly PGetValue<T> getter;
             public ParameterDefn(string pName, string pDesc, T pDefault, PGetValue<T> pGetter, PSetValue<T> pSetter)
                 : base(pName, pDesc)
             {
